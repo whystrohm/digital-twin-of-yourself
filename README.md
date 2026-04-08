@@ -8,6 +8,18 @@ Built by [WhyStrohm](https://whystrohm.com) — embedded creative engine for fou
 
 ---
 
+## The Difference a Twin Makes
+
+| Scenario | Generic AI | With a Twin |
+|----------|-----------|-------------|
+| **Client ghosted your proposal** | "I hope you're doing well! I wanted to follow up on the proposal I sent over..." | "12 days of silence after a $12K proposal means one of two things: scope mismatch or timing mismatch..." |
+| **Teammate suggests a worse approach** | "That's an interesting idea! I can definitely see the appeal of something more straightforward..." | "That's not simpler — that's labor disguised as simplicity..." |
+| **Pitching a new client** | "Great to connect! [Referrer] spoke really highly of you and your brand..." | "[Referrer] made the intro — so I'll skip the preamble and go straight to the structural problem..." |
+
+→ [See full before/after comparisons](examples/before-after/)
+
+---
+
 ## What This Does
 
 This is a persona extraction workflow that analyzes your writing to build a "Digital Twin" — a System Prompt that makes any AI replicate your voice, judgment, and decision-making logic.
@@ -55,30 +67,32 @@ Upload `digital-twin-skill.zip` to Claude.ai (Settings > Skills) or drop `SKILL.
 
 ```
 ├── README.md ................. You're here
+├── CHANGELOG.md .............. Version history
 ├── EXTRACTION_PROMPT.md ...... Universal prompt (any LLM)
 ├── CLAUDE_CODE_PROMPT.md ..... Full 7-step pipeline with file scanning
 ├── SKILL.md .................. Claude Code / Claude.ai skill
 ├── digital-twin-skill.zip .... Upload-ready for Claude.ai
 ├── SAFETY_CHECKLIST.md ....... Pre-paste, pre-scan, pre-share rules
 ├── LICENSE ................... MIT
-└── assets/
-    ├── social-preview.png .... Repository social image
-    └── demo.gif .............. Extraction demo animation
+├── assets/ ................... Demo GIF and social preview
+├── examples/
+│   ├── before-after/ ......... 3 side-by-side comparisons
+│   └── sample-profiles/ ...... 3 complete Twin profiles
+└── validation/
+    ├── RUBRIC.md ............. 10-dimension weighted scoring
+    ├── STRESS_TESTS.md ....... 15 adversarial prompts
+    └── SCORED_EXAMPLE.md ..... Worked scoring example (7.75/10)
 ```
 
-## Safety
+## Validate Your Twin
 
-The prompt itself doesn't collect data, call APIs, or execute code. The risk is in what you paste into it.
+Don't guess whether your Twin is good. Measure it.
 
-**Rules:**
-1. Only paste YOUR writing. Never client data or coworker messages.
-2. Scrub names, dollar amounts, and identifying details before pasting.
-3. The prompt extracts principles, not data — no names in the output.
-4. Share your patterns freely. Keep the System Prompt private.
-5. Layer 3: create a dedicated folder. Never scan your entire home directory.
-6. Once AI reads a file, it's in the session. Scrub BEFORE you scan.
+- **[Scoring Rubric](validation/RUBRIC.md)** — 10 weighted dimensions. Voice Accuracy and Decision Consistency carry 30% of the score. Below 7.0 needs rework.
+- **[15 Stress Tests](validation/STRESS_TESTS.md)** — adversarial prompts across 5 categories: high stakes, conflict, ambiguity, context shift, edge cases.
+- **[Scored Example](validation/SCORED_EXAMPLE.md)** — a Founder/CEO Twin scored at 7.75/10. See exactly where it passed and where the AI tells leaked through.
 
-Full checklist in `SAFETY_CHECKLIST.md`.
+A strong Twin passes 12+ of 15 stress tests with a weighted score above 7.0.
 
 ## Example Output (Layer 3)
 
@@ -105,25 +119,29 @@ Layer 3 also generates a visual dashboard with word frequency clouds, topic clus
 
 ---
 
-## Why This Exists
+## Safety
 
-Most AI persona tools either interview you (slow, self-report bias) or ingest everything (privacy nightmare). This extracts patterns from your actual writing, validates them with a stress test, and gives you a usable artifact — not a profile you can't do anything with.
+The prompt itself doesn't collect data, call APIs, or execute code. The risk is in what you paste into it.
 
-The output is a System Prompt you can load into any AI to:
-- Draft communications in your voice
-- Pre-qualify projects against your decision logic
-- Onboard collaborators to your operating style
-- Audit content for voice consistency
+**Rules:**
+1. Only paste YOUR writing. Never client data or coworker messages.
+2. Scrub names, dollar amounts, and identifying details before pasting.
+3. The prompt extracts principles, not data — no names in the output.
+4. Share your patterns freely. Keep the System Prompt private.
+5. Layer 3: create a dedicated folder. Never scan your entire home directory.
+6. Once AI reads a file, it's in the session. Scrub BEFORE you scan.
 
-**"Discover your voice, then systematize it."**
-
----
+Full checklist in `SAFETY_CHECKLIST.md`.
 
 ## What's Next
 
 Once you have your Twin, score your published content against it:
 - **[Content Audit](https://github.com/whystrohm/whystrohm-audit)** — 5-layer diagnostic that scores your content and rewrites one piece live
 - **[Voice Scorer](https://github.com/whystrohm/whystrohm-voice-scorer)** — measures drift between your website voice and social content
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## License
 MIT — use it, fork it, improve it.
