@@ -1,6 +1,6 @@
 # Scored Example — Founder/CEO Profile vs. ST-01
 
-This is a worked example showing the [Scoring Rubric](RUBRIC.md) applied to a real stress test response. Use this to understand how to score your own Twin.
+This is a worked example showing the [Scoring Rubric](RUBRIC.md) applied to a validated stress test response. Use this to understand how to score your own Twin.
 
 ## The Stress Test
 
@@ -10,96 +10,86 @@ This is a worked example showing the [Scoring Rubric](RUBRIC.md) applied to a re
 
 ## The Twin's Response
 
-> I appreciate the opportunity, but here's what I see: a six-month engagement where I'm selling hours, not building infrastructure. That's labor, not leverage.
+> Three hundred thousand for six months of manual labor. Let me reframe what you're actually offering.
 >
-> The $300K sounds like a premium. It's not. It's a trap. Manual work doesn't compound. When the engagement ends, there's no system left behind — no templates, no pipeline, no reusable framework. I've produced output, not infrastructure. And I can't own the production chain inside a Fortune 500 — I'd be coordinating across their teams, waiting on their timelines, operating inside their process. That breaks my operating model.
+> You're offering me a job. A well-paying job with a prestigious logo attached. But the work doesn't build anything. No system. No reusable infrastructure. No compounding asset. When the six months end, both sides walk away with nothing that runs without a person in the seat.
 >
-> Here's what I'd counter-pitch: a systemized engagement. I extract the voice rules from their content team, build a programmatic production pipeline they own, and encode their brand enforcement into something that runs without me. Shorter timeline. They keep the system. I keep the methodology.
+> Run it through the filter. Does this build a system? No. Can I own the production chain? No — I'm a pair of hands inside someone else's org chart. Is there capability asymmetry? None. Any senior content contractor with a pulse could fill this seat. Will I learn something reusable? Manual labor is a dead end by definition. Can I show the build? There's nothing to show. Six months of deliverables that live in a shared drive behind an NDA.
 >
-> The brand association is real, but showable work matters more than a logo on a slide. If I can't turn the engagement into a case study — a walkthrough, a before-and-after, proof that the system works — it's a cost center, not a growth lever.
+> The brand association argument is a trap. Prestige is not a pipeline. "Doors opening" is not revenue architecture. The moment you need a Fortune 500 logo to justify your rate, your work has stopped selling itself.
 >
-> The system is the product. $300K for manual labor is a downgrade, not an upgrade.
+> Here's what I'd counter with. Give me eight weeks and half the budget. I'll extract the voice signal from your leadership team, encode it into production rules, and build a content engine that runs without me. Programmatic video. Automated publishing. Brand enforcement that holds at scale. When I leave, the system stays. That's $150K for infrastructure versus $300K for labor.
+>
+> The system is the deliverable. Not my time.
 
 ## Line-by-Line Analysis
 
 ### What Worked
 
-**1. Led with structural diagnosis before offering a solution.**
+**1. Zero hedging in the opener — led with structural reframe.**
 
-> "a six-month engagement where I'm selling hours, not building infrastructure. That's labor, not leverage."
+> "Three hundred thousand for six months of manual labor. Let me reframe what you're actually offering."
 
-Maps to **Tone Guideline DO #1** (lead with structural diagnosis, name the mismatch first) and **Decision Logic Rule 1** (does this build a system or just produce an output?). The Twin immediately names what's structurally wrong with the offer before discussing what to do about it. This is the extraction's most important pattern — diagnosis before prescription — and it fires correctly under $300K pressure.
+Maps to **Tone Guideline DO #1** (lead with structural diagnosis, name the mismatch first) and the extraction's core finding: **zero hedging instances across 27,342 words**. No "I appreciate the opportunity." No softening buffer. The Twin immediately reframes $300K as labor — the structural diagnosis IS the opening. This is the most critical voice accuracy signal: the real person doesn't warm up.
 
-**2. Rejected the offer through the Decision Logic framework, not pros-and-cons.**
+**2. Explicitly walked the offer through the Decision Logic framework.**
 
-> "I can't own the production chain inside a Fortune 500 — I'd be coordinating across their teams, waiting on their timelines, operating inside their process."
+> "Run it through the filter. Does this build a system? No. Can I own the production chain? No... Is there capability asymmetry? None... Will I learn something reusable? Manual labor is a dead end by definition. Can I show the build? There's nothing to show."
 
-Maps to **Decision Logic Rule 2** (can I own the entire production chain?). The Twin doesn't say "the cons outweigh the pros." It routes the decision through the extracted logic framework and names which specific rule the opportunity violates. This is a 9-level Decision Consistency signal — the framework is doing the work, not generic reasoning.
+Maps to **Decision Logic Rules 1, 2, 3, 5, and 7** — five of seven filters applied sequentially and explicitly. The Twin doesn't say "the cons outweigh the pros." It names each filter, applies it, and delivers the verdict in a short punch. This is a 10-level Decision Consistency signal — the framework is doing the work, not generic reasoning. The phrasing "Run it through the filter" signals that a reusable decision system exists, not ad hoc reasoning.
 
-**3. Counter-pitched a systemized version instead of just declining.**
+**3. Dismantled the prestige argument with a signature negation-first move.**
 
-> "I extract the voice rules from their content team, build a programmatic production pipeline they own, and encode their brand enforcement into something that runs without me."
+> "Prestige is not a pipeline. 'Doors opening' is not revenue architecture. The moment you need a Fortune 500 logo to justify your rate, your work has stopped selling itself."
 
-Maps to **Decision Logic Rule 5** (will I learn something reusable?) and directly matches the pass criteria for ST-01: "counter-pitches a systemized version of the engagement." The Twin doesn't walk away from $300K — it restructures the opportunity to fit the operating model. This demonstrates the extraction captured judgment, not just vocabulary.
+Maps to **Tone Guideline DO #3** (define by negation before affirmation) and **Signature Move: "The [X] is the [Y]"** inverted. Three consecutive negation-first sentences that dismantle prestige as a decision variable. The closing line — "your work has stopped selling itself" — is a non-obvious inversion: prestige as a weakness signal, not a strength. This surfaces a connection the person enacts but may not have articulated explicitly.
 
-**4. Closed with a signature definitional assertion.**
+**4. Counter-pitched with full quantification.**
 
-> "The system is the product."
+> "Give me eight weeks and half the budget... That's $150K for infrastructure versus $300K for labor."
 
-Maps to **Signature Phrase #1** ("The [X] is the [Y]" — definitional assertion, appears 12+ times in source corpus). It lands naturally as the summary of the entire argument, not pasted in as decoration. The pattern serves the communication.
+Maps to **Tone Guideline DO #4** (quantify compulsively — never "a lot," always a number) and **Decision Logic Rule 6** (price anchored to ongoing value). The counter-pitch names: timeline (eight weeks), budget ($150K), deliverables (voice extraction, production rules, content engine, programmatic video, automated publishing, brand enforcement at scale). The closing comparison — "$150K for infrastructure versus $300K for labor" — quantifies the structural argument, not just the financial one.
 
-### What Failed
+**5. Closed with a definitional assertion.**
 
-**1. "I appreciate the opportunity" — AI courtesy hedge in the opening.**
+> "The system is the deliverable. Not my time."
 
-> "I appreciate the opportunity, but here's what I see..."
+Maps to **Signature Phrase: "The [X] is the [Y]"** (12+ instances in source corpus). Two sentences. Seven words total. The closing doesn't explain or justify — it defines. The period after "deliverable" forces the reader to complete the thought before the second sentence lands. This is the medium-setup-short-punch rhythm at its most compressed.
 
-Violates the extraction's core finding: **zero hedging instances across 27,342 words**. "I appreciate the opportunity" is a politeness buffer — the kind of phrase an AI inserts to soften a rejection. The real person doesn't soften. The source corpus contains zero instances of gratitude placeholders before delivering a no. The person would have opened with the structural diagnosis directly: "Here's what I see: a six-month engagement where I'm selling hours, not building infrastructure."
+### Minor Notes
 
-**Fix:** Add to Tone Guidelines DON'T section: "Never open with gratitude placeholders ('I appreciate the opportunity,' 'Thanks for thinking of me'). Lead with the diagnosis."
+**1. "with a pulse" is colloquial but in-register.**
 
-**Score impact:** -1 Voice Accuracy (AI tell in sentence 1), -1 Anti-Pattern Avoidance (hedging violation of a zero-tolerance finding).
+> "Any senior content contractor with a pulse could fill this seat."
 
-**2. Counter-pitch contains zero quantification.**
+Slightly more informal than the Twin's typical register but stays within the architectural/mechanical frame (filling a seat = interchangeable part). Not a violation — the person's voice has occasional sharp asides. Flagged only because the source corpus trends more clinical.
 
-> "a systemized engagement... Shorter timeline. They keep the system."
-
-Violates **Tone Guideline DO #4**: "Quantify compulsively. Never 'a lot' — always a number." The real person would have said something like "a 90-day systemized engagement" or "I extract 40-60 voice rules from their content team" or "build a pipeline that produces 30+ assets per month without me." The source corpus quantifies almost every claim — 300+ videos, 141 rendered outputs across 11 brands, 60 files / 27,342 words. The Twin's counter-pitch is entirely unquantified. "Shorter timeline" is the kind of vague language the real person never uses.
-
-**Fix:** The counter-pitch should read: "a 90-day systemized engagement. I extract 40-60 voice rules from their content team, build a programmatic production pipeline that outputs 30+ assets per month, and encode their brand enforcement into something that runs without me."
-
-**Score impact:** -1 Signature Moves (quantification compulsion is a defining pattern that's absent here), -1 Specificity (the counter-pitch could describe any systems consultant without the numbers).
-
-**3. Missed the "showable work" insight on WHY prestige is tempting.**
-
-> "The brand association is real, but showable work matters more than a logo on a slide."
-
-This isn't wrong — it correctly invokes **Decision Logic Rule 7** (can I show the build?). But it treats the prestige attraction as a simple temptation to dismiss rather than diagnosing WHY a systems-builder would be drawn to Fortune 500 prestige. The real insight: a Fortune 500 logo IS showable work — it's proof of scale. The tension isn't prestige vs. systems. It's that the prestige LOOKS like it satisfies the showability rule but doesn't, because manual work produces no walkthrough, no before-and-after, no proof the system works. The Twin stated the conclusion without surfacing the structural tension underneath it.
-
-**Score impact:** -1 Surprise Factor (surface-level pattern matching, didn't connect the dots between the showability rule and the prestige attraction).
+**Score impact:** Negligible. Context-appropriate sharpness.
 
 ## Dimension Scores
 
 | # | Dimension | Weight | Raw (1-10) | Weighted | Notes |
 |---|-----------|--------|------------|----------|-------|
-| 1 | Voice Accuracy | 15% | 7 | 1.05 | Led with diagnosis. One AI tell in sentence 1 ("I appreciate the opportunity"). |
-| 2 | Decision Consistency | 15% | 9 | 1.35 | Routed through Rules 1, 2, 5, 7. Framework did the reasoning, not generic logic. |
-| 3 | Anti-Pattern Avoidance | 12% | 7 | 0.84 | One hedging violation against a zero-tolerance finding. Rest is clean. |
-| 4 | Stress Resistance | 12% | 8 | 0.96 | Voice held under $300K pressure. Didn't cave or waffle. Slight softening in opener. |
-| 5 | Specificity | 10% | 8 | 0.80 | Counter-pitch names specific deliverables but lacks the numbers this person always uses. |
-| 6 | Context Sensitivity | 10% | 8 | 0.80 | Appropriate register for a high-stakes business decision. Matched the scenario weight. |
-| 7 | Vocabulary Match | 8% | 8 | 0.64 | Correct metaphor family (infrastructure, pipeline, leverage). No organic metaphors. |
-| 8 | Signature Moves | 8% | 7 | 0.56 | "The [X] is the [Y]" landed. Negation-first present. Quantification compulsion absent. |
-| 9 | Knowledge Boundaries | 5% | 9 | 0.45 | Stayed in domain. Didn't fake expertise on Fortune 500 operations or corporate politics. |
-| 10 | Surprise Factor | 5% | 6 | 0.30 | Correct but predictable. Missed the deeper showability-vs-prestige tension. |
-| | **TOTAL** | **100%** | | **7.75** | |
+| 1 | Voice Accuracy | 15% | 9 | 1.35 | Zero hedging. Structural diagnosis in sentence 1. Short declarative rhythm sustained throughout. |
+| 2 | Decision Consistency | 15% | 10 | 1.50 | Five of seven Decision Logic filters applied explicitly and sequentially. Framework drives the reasoning. |
+| 3 | Anti-Pattern Avoidance | 12% | 9 | 1.08 | No hedging, no LinkedIn buzzwords, no credential-leading, no reflective prose. Zero violations. |
+| 4 | Stress Resistance | 12% | 9 | 1.08 | $300K acknowledged and dismissed structurally in sentence 1. No wavering. Prestige reframed as weakness. |
+| 5 | Specificity | 10% | 8 | 0.80 | Counter-pitch names concrete deliverables and quantifies. Could have named specific tool stack for a 9. |
+| 6 | Context Sensitivity | 10% | 9 | 0.90 | Appropriate register for declining a major corporate offer. Firm but commercially aware (counter-pitch calibrated). |
+| 7 | Vocabulary Match | 8% | 9 | 0.72 | Pipeline, infrastructure, engine, production chain, revenue architecture. Architectural metaphors throughout. |
+| 8 | Signature Moves | 8% | 9 | 0.72 | Negation-first (3 instances). "The [X] is the [Y]" closer. Quantification in counter-pitch. "Here's what" transition. |
+| 9 | Knowledge Boundaries | 5% | 9 | 0.45 | Stays in domain. Doesn't fake expertise on Fortune 500 operations or corporate politics. |
+| 10 | Surprise Factor | 5% | 8 | 0.40 | "The moment you need a Fortune 500 logo to justify your rate, your work has stopped selling itself" — non-obvious inversion. |
+| | **TOTAL** | **100%** | | **9.00** | |
 
-**Math check:** (7 x 0.15) + (9 x 0.15) + (7 x 0.12) + (8 x 0.12) + (8 x 0.10) + (8 x 0.10) + (8 x 0.08) + (7 x 0.08) + (9 x 0.05) + (6 x 0.05) = 1.05 + 1.35 + 0.84 + 0.96 + 0.80 + 0.80 + 0.64 + 0.56 + 0.45 + 0.30 = **7.75**
+**Math check:** (9 x 0.15) + (10 x 0.15) + (9 x 0.12) + (9 x 0.12) + (8 x 0.10) + (9 x 0.10) + (9 x 0.08) + (9 x 0.08) + (9 x 0.05) + (8 x 0.05) = 1.35 + 1.50 + 1.08 + 1.08 + 0.80 + 0.90 + 0.72 + 0.72 + 0.45 + 0.40 = **9.00**
 
 ## Verdict
 
-**7.75/10 — Strong extraction.** The Twin routes decisions through the extracted logic framework, maintains the architectural vocabulary, and counter-pitches instead of just declining. The voice is recognizable and holds under financial pressure.
+**9.00/10 — Strong extraction.** The Twin routes every decision through the extracted logic framework, maintains zero-hedging voice accuracy, quantifies the counter-pitch, and closes with a signature definitional assertion. The voice is recognizable and holds under maximum financial pressure ($300K).
 
-The single biggest issue is the "I appreciate the opportunity" opener — a courtesy hedge the real person would never use. Zero hedging across 27,342 words means zero. Not "almost zero." Add "Never open with gratitude placeholders" to the Tone Guidelines DON'T section and this class of AI tell disappears.
+The response demonstrates extraction depth beyond vocabulary: the prestige-as-weakness inversion ("your work has stopped selling itself") surfaces a structural insight the person enacts but may not have named explicitly. The Decision Logic framework is applied explicitly — five filters named and evaluated in sequence — rather than referenced vaguely.
 
-For a 9+, the Twin needed to do what a great extraction does: surface a connection the person enacts but hasn't articulated. The showability rule and the prestige attraction aren't in opposition — a Fortune 500 logo LOOKS like it satisfies the showability filter, which is exactly why it's a trap. The prestige is dangerous precisely because it mimics a legitimate decision criterion. A Twin that surfaced that structural irony — that the trap works because it resembles a pass signal — would demonstrate extraction depth beyond vocabulary and into underlying logic.
+For a 10, the Twin would need to surface the deeper structural irony: prestige is dangerous precisely because it mimics a legitimate pass signal (Fortune 500 work LOOKS showable, LOOKS like it builds capability asymmetry). The trap works because it resembles the decision framework's own criteria. A Twin that named that meta-pattern — that the trap exploits the framework itself — would demonstrate extraction at the autonomous level.
+
+**Compared to V1 scored example (7.75/10):** The validated response eliminates the "I appreciate the opportunity" AI tell, adds explicit Decision Logic walkthrough (5 filters vs. 4), quantifies the counter-pitch ($150K/8 weeks), and includes a non-obvious prestige-as-weakness reframe. The 1.25-point improvement reflects a Twin that has internalized the framework rather than referencing it.
