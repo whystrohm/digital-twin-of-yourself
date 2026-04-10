@@ -140,10 +140,23 @@ Full checklist in `SAFETY_CHECKLIST.md`.
 Once you have your Twin, score your published content against it:
 - **[Content Audit](https://github.com/whystrohm/whystrohm-audit)** — 5-layer diagnostic that scores your content and rewrites one piece live
 - **[Voice Scorer](https://github.com/whystrohm/whystrohm-voice-scorer)** — measures drift between your website voice and social content
+- **[Voice Extract](https://github.com/whystrohm/whystrohm-voice-extract)** — extract a structured voice profile from any URL
 
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
+
+## Brand Infrastructure Consulting
+
+This is one component of the full brand infrastructure I build for founder-led brands. The Digital Twin extracts the voice. Then I build the rest.
+
+Voice guardrails encoded into every content pipeline. Programmatic video production. Automated publishing across all channels. One operator, full stack, 30 minutes of your time per week.
+
+11 brands. 800+ videos. You own everything I build.
+
+→ [whystrohm.com/pricing](https://whystrohm.com/pricing?utm_source=github&utm_medium=repo-cta&utm_campaign=2026-04-10-closed-loop)
+
+See client proof → [whystrohm.com/results](https://whystrohm.com/results?utm_source=github&utm_medium=repo-cta&utm_campaign=2026-04-10-closed-loop)
 
 ## License
 MIT — use it, fork it, improve it.
