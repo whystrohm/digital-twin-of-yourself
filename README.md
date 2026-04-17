@@ -142,6 +142,9 @@ Once you have your Twin, score your published content against it:
 - **[Voice Scorer](https://github.com/whystrohm/whystrohm-voice-scorer)** — measures drift between your website voice and social content
 - **[Voice Extract](https://github.com/whystrohm/whystrohm-voice-extract)** — extract a structured voice profile from any URL
 
+Then run all of them on a schedule:
+- **[Ritual](https://github.com/whystrohm/ritual)** — Claude Code skill + bootstrap scan that reads your shell history, git repos, and Claude Code memory, then drafts a scheduled trigger that runs Digital Twin (and the other skills) across every brand you ship. Paste-ready for Claude Code's [scheduled triggers](https://claude.ai/code/scheduled).
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
