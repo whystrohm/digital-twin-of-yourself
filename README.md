@@ -15,7 +15,7 @@
 | **A checker for every draft** | Rules code can check, line by line. Run it on a draft, or let it check every pull request so off-voice copy is caught before it ships. |
 | **A twin that keeps up** | Show it drafts next to what you actually sent. It proposes new rules from your edits. You approve each one, and every change is logged. |
 
-![The report, as it opens in your browser](assets/hero.png)
+![The report: your score, the phrases you repeat, where your voice drifts, and flagged lines with a fix](assets/report.png)
 
 The AI does the judgment calls. Everything that can be counted or checked is done by code: it runs on your machine, gives the same answer every time, and strips emails, phone numbers and money amounts before anything is saved.
 

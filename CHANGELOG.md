@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- README shows `assets/report.png`, a designed still of the report in the same style as the film and the diagram, drawn from the sample's real `patterns.json` by `tools/demo/still.py`. It replaces the screenshot of the report page.
+
 ## [3.0.1] - 2026-10-02
 
 ### Changed

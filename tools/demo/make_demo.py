@@ -15,8 +15,9 @@ What it does:
   2. Feeds their real output into the film (tools/demo/film.py) and renders
      it frame by frame, so every number and sentence on screen comes from
      those runs. Stitches the frames into assets/film.gif.
-  3. Captures the real report for assets/hero.png, draws the diagram, and
-     builds the share card.
+  3. Draws the report still (assets/report.png) and the diagram from the same
+     data, captures the real report for assets/hero.png, and builds the
+     share card.
 
   python tools/demo/make_demo.py --font-dir /path/to/fonts
 """
@@ -35,6 +36,7 @@ sys.path.insert(0, HERE)
 import diagram  # noqa: E402
 import film  # noqa: E402
 import social  # noqa: E402
+import still  # noqa: E402
 
 FPS = 20
 GIF_WIDTH = 1280
@@ -77,6 +79,7 @@ def main():
     ap.add_argument("--font-dir")
     ap.add_argument("--out-film", default=os.path.join(ROOT, "assets", "film.gif"))
     ap.add_argument("--out-hero", default=os.path.join(ROOT, "assets", "hero.png"))
+    ap.add_argument("--out-still", default=os.path.join(ROOT, "assets", "report.png"))
     ap.add_argument("--out-diagram", default=os.path.join(ROOT, "assets", "how-it-works.png"))
     ap.add_argument("--out-social", default=os.path.join(ROOT, "assets", "social-preview.png"))
     ap.add_argument("--stills", help="also save a full-size still every half second into this folder")
@@ -156,6 +159,15 @@ def main():
         dpage.screenshot(path=args.out_diagram)
         dpage.close()
 
+        rpath = os.path.join(work, "still.html")
+        with open(rpath, "w", encoding="utf-8") as fh:
+            fh.write(still.page(patterns, css))
+        rpage = browser.new_page(viewport={"width": still.W, "height": still.H}, device_scale_factor=2)
+        rpage.goto("file://" + rpath)
+        rpage.wait_for_timeout(300)
+        rpage.screenshot(path=args.out_still)
+        rpage.close()
+
         spath = os.path.join(work, "social.html")
         with open(spath, "w", encoding="utf-8") as fh:
             fh.write(social.page(os.path.abspath(args.out_hero), css))
@@ -170,7 +182,7 @@ def main():
     if seconds >= 20:
         raise SystemExit("the film runs %.2f s; keep it under 20" % seconds)
     print("wrote %s (%.2f s, %d KB)" % (args.out_film, seconds, os.path.getsize(args.out_film) // 1024))
-    for path in (args.out_hero, args.out_diagram, args.out_social):
+    for path in (args.out_still, args.out_hero, args.out_diagram, args.out_social):
         print("wrote %s" % path)
     if args.keep:
         print("kept %s" % work)
