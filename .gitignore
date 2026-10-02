@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 patterns.json
 twin-report.html
+validation/results/

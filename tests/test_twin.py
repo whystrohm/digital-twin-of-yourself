@@ -471,5 +471,40 @@ class TestRepo(unittest.TestCase):
             self.assertEqual(literal_dash, [], p)
 
 
+class TestEval(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, os.path.join(ROOT, "validation"))
+        import twin_eval
+        self.ev = twin_eval
+
+    def test_parses_all_fifteen(self):
+        tests = self.ev.parse_stress_tests(os.path.join(ROOT, "validation", "STRESS_TESTS.md"))
+        self.assertEqual([t["id"] for t in tests], ["ST-%02d" % i for i in range(1, 16)])
+        self.assertTrue(all(len(t["prompt"]) > 40 for t in tests))
+
+    def test_dry_run_sends_nothing(self):
+        import urllib.request
+        def boom(*a, **k):
+            raise AssertionError("dry run opened a connection")
+        real = urllib.request.urlopen
+        urllib.request.urlopen = boom
+        try:
+            code, out, _ = run(self.ev.main, ["--twin", os.path.join(ROOT, "twins", "example", "twin.md"),
+                                              "--samples", SAMPLE, "--dry-run"])
+        finally:
+            urllib.request.urlopen = real
+        self.assertEqual(code, 0)
+        self.assertIn("dry run: nothing sent", out)
+
+    def test_same_model_refused(self):
+        code, _, _ = run(self.ev.main, ["--twin", os.path.join(ROOT, "twins", "example", "twin.md"),
+                                        "--gen-model", "x", "--judge-model", "x", "--dry-run"])
+        self.assertEqual(code, 2)
+
+    def test_sign_test(self):
+        self.assertEqual(self.ev.sign_test(12, 3), 0.0352)
+        self.assertIsNone(self.ev.sign_test(0, 0))
+
+
 if __name__ == "__main__":
     unittest.main()
