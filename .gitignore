@@ -2,3 +2,7 @@
 _INTERNAL/
 *.docx
 docs/superpowers/
+__pycache__/
+*.pyc
+patterns.json
+twin-report.html

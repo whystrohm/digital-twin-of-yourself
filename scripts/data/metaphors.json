@@ -1,0 +1,71 @@
+{
+  "_about": "Words that signal a metaphor family. A trailing * matches any ending (build* matches builds, building). These are candidate words, not confirmed metaphors: 'foundation' can be literal. Replace with your own list via --metaphors.",
+  "families": {
+    "building": [
+      "architect*",
+      "blueprint*",
+      "build*",
+      "built",
+      "foundation*",
+      "framework*",
+      "infrastructure",
+      "layer*",
+      "pillar*",
+      "scaffold*",
+      "structur*"
+    ],
+    "machine": [
+      "engine*",
+      "gear*",
+      "lever*",
+      "machine*",
+      "mechanism*",
+      "pipeline*",
+      "plumbing",
+      "wiring",
+      "throttle*"
+    ],
+    "nature": [
+      "bloom*",
+      "cultivat*",
+      "grow*",
+      "grew",
+      "nurtur*",
+      "organic*",
+      "plant*",
+      "root*",
+      "seed*",
+      "soil"
+    ],
+    "journey": [
+      "destination*",
+      "journey*",
+      "map*",
+      "milestone*",
+      "path*",
+      "road*",
+      "roadmap*",
+      "step*"
+    ],
+    "conflict": [
+      "arsenal*",
+      "attack*",
+      "battle*",
+      "fight*",
+      "frontline*",
+      "war",
+      "wars",
+      "warfare",
+      "weapon*"
+    ],
+    "water": [
+      "current*",
+      "flood*",
+      "flow*",
+      "ripple*",
+      "stream*",
+      "tide*",
+      "wave*"
+    ]
+  }
+}

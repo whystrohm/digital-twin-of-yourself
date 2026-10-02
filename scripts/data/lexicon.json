@@ -1,0 +1,26 @@
+{
+  "_about": "Word lists used by twin_scan.py and twin_diff.py. Edit freely; pass your own copy with --lexicon.",
+  "hedges": [
+    "a bit", "a little", "arguably", "basically", "fairly", "hopefully",
+    "i believe", "i feel like", "i guess", "i suppose", "i think", "i'm not sure",
+    "in my opinion", "it seems", "kind of", "maybe", "might", "perhaps",
+    "possibly", "probably", "seems like", "somewhat", "sort of", "to be honest"
+  ],
+  "edge_stopwords": [
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
+    "has", "have", "he", "her", "his", "i", "if", "in", "is", "it", "its",
+    "me", "my", "of", "on", "or", "our", "she", "so", "that", "the", "their",
+    "them", "they", "this", "to", "us", "was", "we", "were", "with", "you", "your"
+  ],
+  "function_words": [
+    "a", "about", "after", "all", "also", "an", "and", "any", "are", "as", "at",
+    "be", "been", "before", "both", "but", "by", "can", "did", "do", "does",
+    "each", "for", "from", "had", "has", "have", "he", "her", "here", "him",
+    "his", "how", "i", "if", "in", "into", "is", "it", "its", "me", "more",
+    "most", "my", "no", "not", "now", "of", "on", "one", "only", "or", "other",
+    "our", "out", "she", "so", "some", "than", "that", "the", "their", "them",
+    "then", "there", "these", "they", "this", "those", "to", "up", "us", "was",
+    "we", "were", "what", "when", "where", "which", "who", "why", "will", "with",
+    "would", "you", "your"
+  ]
+}
