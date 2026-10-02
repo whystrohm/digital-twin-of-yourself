@@ -1,0 +1,63 @@
+{
+  "contract": "twin-rules",
+  "version": "1",
+  "brand": "example",
+  "profile_version": "1.0.0",
+  "generated_from": ["examples/sample-corpus"],
+  "rules": [
+    {
+      "id": "no-hedges",
+      "type": "banned_phrase",
+      "severity": "error",
+      "phrases": ["i think", "i believe", "in my opinion", "maybe", "perhaps", "probably", "kind of", "sort of"],
+      "suggestion": "Say it or cut it.",
+      "source": "extraction"
+    },
+    {
+      "id": "no-filler",
+      "type": "banned_phrase",
+      "severity": "warn",
+      "phrases": ["just checking in", "circle back", "touch base", "hope this finds you well"],
+      "suggestion": "Start with the point.",
+      "source": "extraction"
+    },
+    {
+      "id": "no-dashes",
+      "type": "banned_pattern",
+      "severity": "error",
+      "pattern": "/\\u2014/",
+      "suggestion": "Use a comma, colon or full stop.",
+      "source": "extraction"
+    },
+    {
+      "id": "sentence-length",
+      "type": "max_sentence_words",
+      "severity": "warn",
+      "max": 25,
+      "suggestion": "Split it. The corpus rarely goes past 15 words.",
+      "source": "scan"
+    },
+    {
+      "id": "hedge-rate",
+      "type": "max_rate",
+      "severity": "warn",
+      "metric": "hedge",
+      "max": 0.05,
+      "source": "scan"
+    },
+    {
+      "id": "no-exclamations",
+      "type": "max_rate",
+      "severity": "warn",
+      "metric": "exclamation",
+      "max": 0,
+      "source": "extraction"
+    },
+    {
+      "id": "no-emoji",
+      "type": "no_emoji",
+      "severity": "error",
+      "source": "extraction"
+    }
+  ]
+}
