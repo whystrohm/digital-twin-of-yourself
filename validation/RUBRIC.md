@@ -189,4 +189,4 @@ For each stress test response, score all 10 dimensions (1-10), then calculate:
 
 Run 3+ stress tests and average the weighted scores for your final rating.
 
-See [SCORED_EXAMPLE.md](SCORED_EXAMPLE.md) for a worked example showing this rubric applied to a real Twin response.
+See [SCORED_EXAMPLE.md](SCORED_EXAMPLE.md) for a worked example showing this rubric applied to a fictional Twin response.

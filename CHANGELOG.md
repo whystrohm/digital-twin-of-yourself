@@ -22,10 +22,13 @@
 - Redaction of emails, phone numbers and money amounts is always on in the scripts.
 - `SAFETY_CHECKLIST.md`: consent for a Twin of another person, and what the scripts do and do not redact.
 - README leads with the demo and a three-minute start.
+- `examples/before-after/`, `examples/sample-profiles/` and `validation/SCORED_EXAMPLE.md` rewritten or relabelled around fictional people.
+- `assets/social-preview.png` replaced with the new hero image.
 - `assets/demo.gif` and `assets/hero.png` rebuilt from real output on synthetic data.
 - `digital-twin-skill.zip` rebuilt from the new `SKILL.md`.
 
 ### Removed
+- `validation/REAL_TEST_RESULTS.md`, `assets/example-dashboard.png` and `assets/v2-announcement/`: they held the author's own Twin data. Examples now use fictional people only.
 - The reference to Perplexity research and an internal example path in `CLAUDE_CODE_PROMPT.md`.
 
 ## [2.0.0] - 2026-04-08
