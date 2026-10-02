@@ -175,6 +175,7 @@ def scan_corpus(name, root, lex, metaphors, min_repeat, max_flags, long_words, h
             label = os.path.basename(path)
         else:
             label = os.path.relpath(path, root_abs).replace(os.sep, "/")
+        label = tl.redact(label)
         text = tl.redact(tl.read_text(path), redactions)
         lines = tl.classify_lines(text)
         sents = tl.split_sentences(lines)
@@ -230,7 +231,7 @@ def scan_corpus(name, root, lex, metaphors, min_repeat, max_flags, long_words, h
                     gram = toks[i:i + n]
                     if gram[0] in edge_stop or gram[-1] in edge_stop:
                         continue
-                    if any(t.startswith("redacted") for t in gram):
+                    if tl.REDACTED_WORD in gram:
                         continue
                     key = " ".join(gram)
                     ngram_counts[key] += 1
@@ -238,7 +239,8 @@ def scan_corpus(name, root, lex, metaphors, min_repeat, max_flags, long_words, h
                     if key not in ngram_first:
                         ngram_first[key] = (label, s["line"])
         for ln in lines:
-            if ln["kind"] in ("code", "frontmatter", "blank"):
+            # Dashes are flagged in prose only; headings are not sentences.
+            if ln["kind"] not in ("text", "list", "table"):
                 continue
             for m in re.finditer("\u2014|\\s--\\s", ln["raw"]):
                 flags.append({
@@ -331,7 +333,12 @@ def scan_corpus(name, root, lex, metaphors, min_repeat, max_flags, long_words, h
     # ---- flags: stable order, capped
     order = {"hedge": 0, "long_sentence": 1, "dash": 2}
     flags.sort(key=lambda f: (order[f["kind"]], f["file"], f["line"]))
-    flagged_keys = {(f["file"], f["line"]) for f in flags}
+    # A sentence counts as flagged when any flag falls on one of its lines.
+    flag_lines = {}
+    for f in flags:
+        flag_lines.setdefault(f["file"], set()).add(f["line"])
+    flagged_keys = {(s["file"], s["line"]) for s in all_sentences
+                    if any(s["line"] <= ln <= s["end_line"] for ln in flag_lines.get(s["file"], ()))}
     flag_counts = collections.Counter(f["kind"] for f in flags)
 
     # ---- score

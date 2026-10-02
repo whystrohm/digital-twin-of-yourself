@@ -48,20 +48,24 @@ def find_pairs(folder):
         m = PAIR_RX.match(name)
         if m:
             sides[m.group("name")][m.group("side")] = os.path.join(folder, name)
-    pairs = [(n, s["draft"], s["edited"]) for n, s in sorted(sides.items()) if len(s) == 2]
-    lonely = sorted(n for n, s in sides.items() if len(s) != 2)
+    pairs = [(tl.redact(n), s["draft"], s["edited"]) for n, s in sorted(sides.items()) if len(s) == 2]
+    lonely = sorted(tl.redact(n) for n, s in sides.items() if len(s) != 2)
     return pairs, lonely
 
 
 def doc(path):
     text = tl.redact(tl.read_text(path))
     sents = tl.split_sentences(tl.classify_lines(text))
-    tokens = [w.lower() for s in sents for w in tl.words(s["text"])]
+    tokens = [[w.lower() for w in tl.words(s["text"])] for s in sents]
     return sents, tokens
 
 
-def ngrams(tokens, n):
-    return [" ".join(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+def ngrams(sentence_tokens, n):
+    """n-grams inside each sentence, never across a sentence boundary."""
+    out = []
+    for toks in sentence_tokens:
+        out.extend(" ".join(toks[i:i + n]) for i in range(len(toks) - n + 1))
+    return out
 
 
 # ---------------------------------------------------------------- analysis
@@ -80,7 +84,7 @@ def deleted_phrases(pairs_docs, function_words, min_pairs):
                     continue
                 if toks[0] in function_words and toks[-1] in function_words:
                     continue
-                if any(t.startswith("redacted") or t.isdigit() for t in toks):
+                if any(t == tl.REDACTED_WORD or t.isdigit() for t in toks):
                     continue
                 st = stats[g]
                 st["pairs_seen"].append(name)

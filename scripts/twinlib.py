@@ -18,13 +18,27 @@ TEXT_EXTENSIONS = (".md", ".txt")
 # Redaction runs on raw text at load time, before any counting, so no
 # email, phone number or money figure can reach patterns.json, a report,
 # a snippet or a repeated-phrase list.
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+# Markdown emphasis characters are allowed inside the local part, so
+# "**bob**@example.com" is caught before cleaning turns it into an address.
+_EMAIL = re.compile(r"[A-Za-z0-9._%+*~`-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+_EXT = r"(?:\s?(?:x|ext\.?)\s?\d{1,6})?"
 _PHONE = re.compile(
-    r"(?<![\w$])(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\w)"
+    # +44 20 7946 0958, +1 (617) 555-0100
+    r"(?<![\w$])\+\d{1,3}(?:[\s.-]?\(?\d{1,4}\)?){2,5}" + _EXT + r"(?!\d)"
+    # (617) 555-0100, 617.555.0100x22
+    r"|(?<![\w$])(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}" + _EXT + r"(?!\d)"
+    # 555-1234
+    r"|(?<![\w$.-])\d{3}-\d{4}(?![\d-])",
+    re.IGNORECASE,
 )
+_CURRENCY_SIGNS = "$\u20ac\u00a3\u00a5\u20b9\u20a9\u20bd\u20ba\u20aa\u20a6\u20b1"
+_AMOUNT = r"\d[\d,]*(?:\.\d+)?"
+_SCALE = r"(?:\s?(?:k|m|mm|bn|million|billion|thousand)\b)?"
 _MONEY = re.compile(
-    r"(?:[$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|mm|bn|million|billion|thousand)\b)?)"
-    r"|(?:\b\d[\d,]*(?:\.\d+)?\s?(?:dollars|usd|eur|gbp)\b)",
+    r"[" + _CURRENCY_SIGNS + r"]\s?" + _AMOUNT + _SCALE
+    + r"|\b(?:USD|EUR|GBP|CAD|AUD|JPY|INR|CHF|CNY)\s?" + _AMOUNT + _SCALE
+    + r"|\b" + _AMOUNT + r"\s?(?:dollars?|usd|eur|euros?|gbp|pounds?|yen|rupees?)\b"
+    + r"|\b" + _AMOUNT + r"\s?(?:k|bn)\b",
     re.IGNORECASE,
 )
 
@@ -130,7 +144,8 @@ def classify_lines(text):
             kind = "table"
             body = body.replace("|", " ")
         body = _QUOTE.sub("", body)
-        out.append({"no": no, "raw": raw, "kind": kind, "clean": clean_inline(body)})
+        # Redact again after cleaning: removing markdown can join an address.
+        out.append({"no": no, "raw": raw, "kind": kind, "clean": redact(clean_inline(body))})
     return out
 
 
@@ -155,8 +170,20 @@ _ABBREV = {
 _END = re.compile(r"[.!?]+[\"'”’)\]]*(?=\s|$)")
 
 
+REDACTED_WORD = "__redacted__"
+_REDACTED_TOKEN = re.compile(r"\[redacted-(?:email|phone|amount)\]")
+
+
 def words(s):
-    return _WORD.findall(s)
+    """Word tokens. A redaction placeholder becomes one REDACTED_WORD token,
+    so it counts as one word and never forms part of a phrase."""
+    parts = _REDACTED_TOKEN.split(s)
+    out = []
+    for i, part in enumerate(parts):
+        if i:
+            out.append(REDACTED_WORD)
+        out.extend(_WORD.findall(part))
+    return out
 
 
 def split_sentences(lines):
@@ -192,31 +219,39 @@ def split_sentences(lines):
             text += ln["clean"]
         start = 0
         for m in _END.finditer(text):
-            candidate = text[start:m.end()].strip()
+            candidate = text[start:m.end()]
             prev = re.findall(r"([A-Za-z.]+)\.*$", text[start:m.start()])
             token = prev[0].lower().rstrip(".") if prev else ""
             if m.group(0).startswith(".") and (
                 token in _ABBREV or (len(token) == 1 and token.isalpha())
             ):
                 continue
-            if candidate:
+            if candidate.strip():
                 sentences.append(_sentence(candidate, start, offsets))
             start = m.end()
-        tail = text[start:].strip()
-        if tail:
-            sentences.append(_sentence(tail, start, offsets))
+        if text[start:].strip():
+            sentences.append(_sentence(text[start:], start, offsets))
     return [s for s in sentences if s["words"] > 0]
 
 
-def _sentence(text, offset, offsets):
+def _line_at(pos, offsets):
     line = offsets[0][1]
-    lead = len(text) - len(text.lstrip())
     for off, no in offsets:
-        if off <= offset + lead:
+        if off <= pos:
             line = no
+    return line
+
+
+def _sentence(raw, offset, offsets):
+    """raw is the unstripped slice starting at offset in the block text."""
+    lead = len(raw) - len(raw.lstrip())
+    text = raw.strip()
+    first = offset + lead
+    last = first + max(len(text) - 1, 0)
     stripped = text.rstrip("\"'”’)] ")
     end = stripped[-1] if stripped and stripped[-1] in ".?!" else ""
-    return {"text": text, "line": line, "words": len(words(text)), "end": end}
+    return {"text": text, "line": _line_at(first, offsets), "end_line": _line_at(last, offsets),
+            "words": len(words(text)), "end": end}
 
 
 # ---------------------------------------------------------------- matching
@@ -299,7 +334,7 @@ def list_text_files(root):
 
 
 def read_text(path):
-    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
         return fh.read().replace("\r\n", "\n").replace("\r", "\n")
 
 

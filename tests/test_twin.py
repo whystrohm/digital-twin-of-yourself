@@ -515,5 +515,140 @@ class TestEval(unittest.TestCase):
         self.assertIsNone(self.ev.sign_test(0, 0))
 
 
+class TestReviewRegressions(Tmp):
+    """One test per bug found in the pre-merge review."""
+
+    def write(self, name, text, encoding="utf-8"):
+        path = self.p(name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding=encoding) as fh:
+            fh.write(text)
+        return path
+
+    def rules(self, rule):
+        return self.write("r.json", json.dumps({"contract": "twin-rules", "version": "1", "brand": "x",
+                                                "profile_version": "1.0.0", "rules": [rule]}))
+
+    def test_match_text_is_redacted(self):
+        rules = self.rules({"id": "reach", "type": "banned_pattern", "severity": "error",
+                            "pattern": "/reach me at .*/"})
+        draft = self.write("d.md", "Reach me at bob@example.com or 617-555-0100 today.\n")
+        for fmt in ("json", "github", "text"):
+            _, out, _ = run(twin_check.main, ["--rules", rules, draft, "--format", fmt])
+            self.assertNotIn("bob@example.com", out, fmt)
+            self.assertNotIn("555-0100", out, fmt)
+
+    def test_redaction_coverage(self):
+        for raw in ("+44 20 7946 0958", "555-1234", "617.555.0100x22", "USD 500", "EUR 40", "500k",
+                    "\u00a55000", "\u20b95,000", "1,200 euros", "**bob**@example.com"):
+            self.assertTrue(tl.redact(raw).startswith("[redacted-"), raw)
+        for keep in ("Call 2026-10-02 at 9.30", "version 1.2.3", "We shipped 300 boxes in 2026."):
+            self.assertEqual(tl.redact(keep), keep)
+
+    def test_emphasised_email_never_reaches_output(self):
+        corpus = self.p("c")
+        self.write("c/a.md", "Write to **bob**@example.com today, I think.\n")
+        out = self.p("p.json")
+        run(twin_scan.main, ["--corpus", corpus, "--out", out])
+        with open(out, encoding="utf-8") as fh:
+            self.assertNotIn("bob@example.com", fh.read())
+
+    def test_file_names_are_redacted(self):
+        corpus = self.p("c")
+        self.write("c/john@acme.com notes.md", "One owner per task. One owner per task. One owner per task.\n")
+        out = self.p("p.json")
+        run(twin_scan.main, ["--corpus", corpus, "--out", out])
+        with open(out, encoding="utf-8") as fh:
+            self.assertNotIn("john@acme.com", fh.read())
+        pairs = self.p("pairs")
+        for side, text in (("draft", "I really think so.\n"), ("edited", "So.\n")):
+            self.write("pairs/bob@acme.com.%s.md" % side, text)
+        props = self.p("props.md")
+        run(twin_diff.main, ["propose", pairs, "--rules", RULES, "--out", props, "--min-pairs", "1"])
+        with open(props, encoding="utf-8") as fh:
+            self.assertNotIn("bob@acme.com", fh.read())
+
+    def test_line_numbers_on_wrapped_lines(self):
+        sents = tl.split_sentences(tl.classify_lines("First one.\nSecond one.\nThird one."))
+        self.assertEqual([x["line"] for x in sents], [1, 2, 3])
+        rules = self.rules({"id": "h", "type": "banned_phrase", "severity": "error", "phrases": ["maybe"]})
+        draft = self.write("d.md", "We ship today.\nMaybe Friday.\n")
+        _, out, _ = run(twin_check.main, ["--rules", rules, draft, "--format", "json"])
+        self.assertEqual(json.loads(out)["results"][0]["hits"][0]["line"], 2)
+
+    def test_bad_pattern_type_exits_2(self):
+        rules = self.rules({"id": "p", "type": "banned_pattern", "severity": "error", "pattern": 5})
+        self.assertEqual(run(twin_check.main, ["--rules", rules, os.path.join(FIX, "drafts", "good.md")])[0], 2)
+
+    def test_empty_match_pattern_rejected(self):
+        rules = self.rules({"id": "p", "type": "banned_pattern", "severity": "error", "pattern": "/x?/"})
+        code, _, err = run(twin_check.main, ["--rules", rules, os.path.join(FIX, "drafts", "good.md")])
+        self.assertEqual(code, 2)
+        self.assertIn("empty string", err)
+
+    def test_no_phantom_phrases(self):
+        pairs = self.p("pairs")
+        for i in (1, 2):
+            self.write("pairs/p%d.draft.md" % i, "Mail sam%d@example.com now. We ship Friday.\n" % i)
+            self.write("pairs/p%d.edited.md" % i, "We ship Friday.\n")
+        props = self.p("props.md")
+        run(twin_diff.main, ["propose", pairs, "--rules", RULES, "--out", props])
+        with open(props, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertNotIn('Ban "email"', text)
+        self.assertNotIn('Ban "now we', text)
+        corpus = self.p("c")
+        for i in range(3):
+            self.write("c/f%d.md" % i, "Send it to a%d@example.com and your team today.\n" % i)
+        out = self.p("p.json")
+        run(twin_scan.main, ["--corpus", corpus, "--out", out])
+        phrases = [x["phrase"] for x in tl.load_json(out)["corpora"][0]["crutch_phrases"]]
+        self.assertFalse(any("email" in ph or "redacted" in ph for ph in phrases), phrases)
+
+    def test_bom(self):
+        path = self.write("b.md", "---\ntitle: x\n---\nI think so.\n", encoding="utf-8-sig")
+        sents = tl.split_sentences(tl.classify_lines(tl.read_text(path)))
+        self.assertEqual([x["text"] for x in sents], ["I think so."])
+        rules = self.rules({"id": "h", "type": "banned_phrase", "severity": "error", "phrases": ["i think"]})
+        _, out, _ = run(twin_check.main, ["--rules", rules, path, "--format", "json"])
+        self.assertEqual(json.loads(out)["results"][0]["hits"][0]["column"], 1)
+
+    def test_github_property_escaping(self):
+        self.assertEqual(twin_check._ghp("dir,a:b/f.md"), "dir%2Ca%3Ab/f.md")
+
+    def test_flagged_never_exceeds_sentences(self):
+        corpus = self.p("c")
+        self.write("c/a.md", "# One \u2014 two\n## Three \u2014 four\n### Five \u2014 six\n\nOne sentence.\n")
+        out = self.p("p.json")
+        run(twin_scan.main, ["--corpus", corpus, "--out", out])
+        c = tl.load_json(out)["corpora"][0]
+        self.assertLessEqual(c["flags"]["flagged_sentences"], c["totals"]["sentences"])
+
+    def test_eval_survives_bad_judge_reply(self):
+        sys.path.insert(0, os.path.join(ROOT, "validation"))
+        import twin_eval
+        calls = []
+
+        def fake(model, key, prompt, system=None, schema=None, effort="medium", retries=3):
+            calls.append(model)
+            if schema:
+                return "not json", {"input_tokens": 1, "output_tokens": 1}, "end_turn"
+            return "an answer", {"input_tokens": 1, "output_tokens": 1}, "end_turn"
+
+        real, twin_eval.call = twin_eval.call, fake
+        os.environ["ANTHROPIC_API_KEY"] = "test-key-not-real"
+        out = self.p("eval.json")
+        try:
+            code, _, _ = run(twin_eval.main, ["--twin", os.path.join(ROOT, "twins", "example", "twin.md"),
+                                              "--samples", SAMPLE, "--tests", "ST-01,ST-02", "--out", out])
+        finally:
+            twin_eval.call = real
+            del os.environ["ANTHROPIC_API_KEY"]
+        self.assertEqual(code, 0)
+        data = tl.load_json(out)
+        self.assertTrue(data["complete"])
+        self.assertEqual([t["result"] for t in data["tests"]], ["error", "error"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -111,7 +111,7 @@ def read_samples(folder, limit):
         if room <= 0:
             break
         piece = text[:room]
-        parts.append("--- %s ---\n%s" % (os.path.basename(f), piece))
+        parts.append("--- %s ---\n%s" % (tl.redact(os.path.basename(f)), piece))
         used += len(piece)
     return "\n\n".join(parts)
 
@@ -226,7 +226,8 @@ def main(argv=None):
         tests = [t for t in tests if t["id"] in want]
     if not tests:
         ap.error("no stress tests selected")
-    twin_text = tl.read_text(args.twin)
+    # Everything sent to the API is redacted first, the Twin included.
+    twin_text = tl.redact(tl.read_text(args.twin))
     if args.samples:
         reference = read_samples(args.samples, args.max_sample_chars)
         ref_kind = "held-out writing samples"
@@ -257,6 +258,13 @@ def main(argv=None):
 
     rng = random.Random(args.seed)
     rows = []
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+
+    def save(done):
+        """Write what has been paid for so far, after every test."""
+        tl.write_json(args.out, {"generator": args.gen_model, "judge": args.judge_model,
+                                 "effort": args.effort, "seed": args.seed, "complete": done,
+                                 "tests": rows})
     spent = {"input_tokens": 0, "output_tokens": 0}
     for t in tests:
         row = {"id": t["id"], "title": t["title"]}
@@ -268,6 +276,7 @@ def main(argv=None):
         if generic is None or twin is None:
             row["error"] = "generation stopped: %s / %s" % (s1, s2)
             rows.append(row)
+            save(False)
             print("%s  error: %s" % (t["id"], row["error"]))
             continue
         row["generic"], row["twin"] = generic, twin
@@ -284,17 +293,25 @@ def main(argv=None):
             if text is None:
                 verdicts.append({"twin_was": "A" if twin_first else "B", "pick": "error", "stop": s})
                 continue
-            v = json.loads(text)
-            pick = v["winner"]
+            try:
+                v = json.loads(text)
+                pick = v["winner"]
+                if pick not in ("A", "B", "tie"):
+                    raise ValueError(pick)
+            except (ValueError, KeyError, TypeError):
+                verdicts.append({"twin_was": "A" if twin_first else "B", "pick": "error",
+                                 "stop": s, "raw": text[:500]})
+                continue
             mapped = "tie" if pick == "tie" else ("twin" if (pick == "A") == twin_first else "generic")
             verdicts.append({"twin_was": "A" if twin_first else "B", "judge_said": pick, "pick": mapped,
-                             "confidence": v["confidence"], "reason": v["reason"]})
+                             "confidence": v.get("confidence"), "reason": v.get("reason", "")})
         row["verdicts"] = verdicts
         picks = [v["pick"] for v in verdicts if v["pick"] != "error"]
         row["result"] = (picks[0] if len(set(picks)) == 1 else "split") if picks else "error"
         if args.rules:
             row["rules"] = {"generic": rule_check(args.rules, generic), "twin": rule_check(args.rules, twin)}
         rows.append(row)
+        save(False)
         print("%s  %-8s %s" % (t["id"], row["result"], t["title"]))
 
     wins = sum(1 for r in rows if r.get("result") == "twin")
@@ -311,8 +328,7 @@ def main(argv=None):
             side: sum(1 for r in rows if r.get("rules", {}).get(side, {}).get("passed")) for side in ("generic", "twin")}
     out = {"generator": args.gen_model, "judge": args.judge_model, "effort": args.effort, "seed": args.seed,
            "both_orders": args.both_orders, "reference": ref_kind, "twin": os.path.basename(args.twin),
-           "summary": summary, "tests": rows}
-    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+           "complete": True, "summary": summary, "tests": rows}
     tl.write_json(args.out, out)
     print("twin %d, generic %d, tie/split %d, errors %d, sign test p=%s" % (
         wins, losses, summary["ties_or_split"], summary["errors"], summary["sign_test_p"]))

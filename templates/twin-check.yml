@@ -37,7 +37,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          git diff -z --name-only --diff-filter=AM "origin/$BASE_REF...HEAD" -- \
+          git diff -z --name-only --diff-filter=AMR "origin/$BASE_REF...HEAD" -- \
             ":(glob)$DRAFTS/**/*.md" ":(glob)$DRAFTS/**/*.txt" > "$RUNNER_TEMP/changed"
           if [ ! -s "$RUNNER_TEMP/changed" ]; then
             echo "No changed drafts under $DRAFTS."

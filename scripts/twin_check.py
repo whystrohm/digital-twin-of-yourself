@@ -99,10 +99,15 @@ def validate_rules(raw):
             if not isinstance(ph, list) or not ph or not all(isinstance(x, str) and x.strip() for x in ph):
                 p.append('%s: "phrases" must be a non-empty array of strings' % at)
         elif t == "banned_pattern":
-            try:
-                tl.literal_regex(r.get("pattern") or "")
-            except (ValueError, re.error) as exc:
-                p.append("%s: %s" % (at, exc))
+            pat = r.get("pattern")
+            if not isinstance(pat, str) or not pat:
+                p.append('%s: "pattern" must be a string like /body/flags' % at)
+            else:
+                try:
+                    if tl.literal_regex(pat).search("") is not None:
+                        p.append("%s: pattern %s can match an empty string, so it would flag every line" % (at, pat))
+                except (ValueError, re.error) as exc:
+                    p.append("%s: %s" % (at, exc))
         elif t == "max_sentence_words":
             if not isinstance(r.get("max"), int) or r["max"] < 1:
                 p.append('%s: "max" must be a positive integer' % at)
@@ -143,7 +148,7 @@ def check_file(path, label, rules, lexicon):
                 for name, rx in regexes:
                     for m in rx.finditer(ln["raw"]):
                         hits.append({"file": label, "line": ln["no"], "column": m.start() + 1,
-                                     "match": m.group(0),
+                                     "match": tl.redact(m.group(0)),
                                      "snippet": _centred(ln["raw"], m, rx)})
         elif t == "max_sentence_words":
             for s in sents:
@@ -314,8 +319,13 @@ def render_text(rules_path, doc, summary, files, strict):
 
 
 def _gh(value):
-    """Escape a value for a GitHub Actions workflow command."""
+    """Escape a message for a GitHub Actions workflow command."""
     return str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _ghp(value):
+    """Escape a property value (file, title): commas and colons too."""
+    return _gh(value).replace(",", "%2C").replace(":", "%3A")
 
 
 def render_github(summary, failed):
@@ -327,7 +337,7 @@ def render_github(summary, failed):
         level = "error" if s["severity"] == "error" else "warning"
         title = "twin: %s" % s["id"]
         for h in s["hits"]:
-            loc = "file=%s,line=%d" % (_gh(h["file"]), h["line"])
+            loc = "file=%s,line=%d" % (_ghp(h["file"]), h["line"])
             if h.get("column"):
                 loc += ",col=%d" % h["column"]
             if s["type"] in ("banned_phrase", "banned_pattern"):
@@ -339,7 +349,7 @@ def render_github(summary, failed):
                 msg = h["match"]
             if s.get("suggestion"):
                 msg += ". " + s["suggestion"]
-            out.append("::%s %s,title=%s::%s" % (level, loc, _gh(title).replace(",", "%2C").replace(":", "%3A"), _gh(msg)))
+            out.append("::%s %s,title=%s::%s" % (level, loc, _ghp(title), _gh(msg)))
     errors = sum(1 for s in summary if not s["passed"] and s["severity"] == "error")
     warns = sum(1 for s in summary if not s["passed"] and s["severity"] == "warn")
     out.append("twin_check: %s (%d error rule%s failed, %d warning rule%s failed)" % (
