@@ -36,9 +36,9 @@ W, H = 1200, 750
 
 TERM_CSS = """
 html,body{margin:0;background:#07080A}
-body{width:%dpx;height:%dpx;overflow:hidden;color:#F6F5F2;font:14px/1.5 "IBM Plex Mono",ui-monospace,Menlo,monospace}
-.bar{height:40px;border-bottom:1px solid rgba(246,245,242,.22);display:flex;align-items:center;padding:0 24px;
-color:rgba(246,245,242,.66);font-size:12px;letter-spacing:.12em;text-transform:uppercase;justify-content:space-between}
+body{width:%dpx;height:%dpx;overflow:hidden;color:#F6F5F2;font:19px/1.45 "IBM Plex Mono",ui-monospace,Menlo,monospace}
+.bar{height:48px;border-bottom:1px solid rgba(246,245,242,.22);display:flex;align-items:center;padding:0 24px;
+color:rgba(246,245,242,.66);font-size:15px;letter-spacing:.12em;text-transform:uppercase;justify-content:space-between}
 .bar b{color:#F6F5F2;font-weight:400}
 .step{color:#E4552A}
 pre{margin:0;padding:22px 24px;white-space:pre-wrap;word-break:break-word}
@@ -74,17 +74,18 @@ def colour_line(line):
     return e
 
 
-def terminal_page(step, label, blocks, fonts):
+def terminal_page(step, label, blocks, fonts, size=19):
     body = []
     for cmd, out in blocks:
         body.append('<span class="cmd"><span class="p">$</span> %s</span>' % html.escape(cmd))
         if out:
             body.append('<span class="out">%s</span>' % "\n".join(colour_line(l) for l in out.rstrip("\n").split("\n")))
         body.append("")
-    return ('<!doctype html><html><head><meta charset="utf-8"><style>%s%s</style></head><body>'
+    extra = "body{font-size:%dpx}" % size
+    return ('<!doctype html><html><head><meta charset="utf-8"><style>%s%s%s</style></head><body>'
             '<div class="bar"><span><span class="step">%s</span> &nbsp; <b>%s</b></span>'
             '<span>synthetic sample data</span></div><pre>%s</pre></body></html>' % (
-                font_css(fonts), TERM_CSS, html.escape(step), html.escape(label), "\n".join(body)))
+                font_css(fonts), TERM_CSS, extra, html.escape(step), html.escape(label), "\n".join(body)))
 
 
 def main():
@@ -92,6 +93,7 @@ def main():
     ap.add_argument("--font-dir")
     ap.add_argument("--out-gif", default=os.path.join(ROOT, "assets", "demo.gif"))
     ap.add_argument("--out-hero", default=os.path.join(ROOT, "assets", "hero.png"))
+    ap.add_argument("--out-diagram", default=os.path.join(ROOT, "assets", "how-it-works.png"))
     ap.add_argument("--keep", action="store_true", help="keep the frames folder")
     args = ap.parse_args()
     fonts = os.path.abspath(args.font_dir) if args.font_dir else None
@@ -134,11 +136,11 @@ def main():
         except Exception:
             browser = p.chromium.launch()
 
-        def term(name, step, label, blocks, secs):
+        def term(name, step, label, blocks, secs, size=19):
             page = browser.new_page(viewport={"width": W, "height": H})
             path = os.path.join(work, name + ".html")
             with open(path, "w", encoding="utf-8") as fh:
-                fh.write(terminal_page(step, label, blocks, fonts))
+                fh.write(terminal_page(step, label, blocks, fonts, size))
             page.goto("file://" + path)
             page.wait_for_timeout(150)
             out = os.path.join(frames, name + ".png")
@@ -155,12 +157,14 @@ def main():
             shots.append((out, secs))
 
         term("01-scan", "1/4", "scan a folder of writing", [(scan_cmd, scan_out)], 2.4)
-        term("02-report", "2/4", "build the report", [(scan_cmd, scan_out), (rep_cmd, rep_out)], 1.4)
+        term("02-report", "2/4", "build the report", [(scan_cmd, scan_out), (rep_cmd, rep_out)], 1.2)
 
         page = browser.new_page(viewport={"width": W, "height": H}, color_scheme="dark")
         page.goto("file://" + report)
         if fonts:
             page.add_style_tag(content=font_css(fonts))
+        # GitHub shows the GIF about 830 px wide. Zoom so report text stays readable.
+        page.add_style_tag(content="html{zoom:1.3}")
         page.wait_for_timeout(300)
         out = os.path.join(frames, "03-report-top.png")
         page.screenshot(path=out)
@@ -180,7 +184,18 @@ def main():
         hero.close()
         page.close()
 
-        term("07-check", "3/4", "check a draft against the twin's rules", [(chk1_cmd, chk1_out)], 2.6)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import diagram
+        dpath = os.path.join(work, "diagram.html")
+        with open(dpath, "w", encoding="utf-8") as fh:
+            fh.write(diagram.page(font_css(fonts)))
+        dpage = browser.new_page(viewport={"width": diagram.W, "height": diagram.H}, device_scale_factor=2)
+        dpage.goto("file://" + dpath)
+        dpage.wait_for_timeout(300)
+        dpage.screenshot(path=args.out_diagram)
+        dpage.close()
+
+        term("07-check", "3/4", "check a draft against the twin's rules", [(chk1_cmd, chk1_out)], 2.8, size=15)
         term("08-fix", "4/4", "fix it", [(diff_cmd, diff_out)], 2.0)
         term("09-pass", "4/4", "check again", [(chk2_cmd, chk2_out)], 2.2)
         browser.close()
@@ -213,6 +228,7 @@ def main():
         raise SystemExit("the GIF runs %.2f s; keep it under 20" % seconds)
     print("wrote %s (%.2f s measured, %d KB)" % (args.out_gif, seconds, os.path.getsize(args.out_gif) // 1024))
     print("wrote %s" % args.out_hero)
+    print("wrote %s" % args.out_diagram)
     if args.keep:
         print("frames kept in %s" % frames)
     else:

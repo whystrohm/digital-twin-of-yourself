@@ -194,6 +194,15 @@ class TestCheck(Tmp):
         self.assertEqual(res["sentence-length"]["hits"][0]["line"], 9)
         self.assertTrue(res["no-emoji"]["passed"])
 
+    def test_github_annotations(self):
+        code, out, _ = run(twin_check.main, ["--rules", RULES, os.path.join(FIX, "drafts", "bad.md"),
+                                             "--format", "github"])
+        self.assertEqual(code, 1)
+        lines = out.splitlines()
+        self.assertTrue(any(l.startswith("::error file=") and "line=3,col=1" in l and "no-hedges" in l for l in lines))
+        self.assertTrue(any(l.startswith("::warning file=") and "sentence-length" in l for l in lines))
+        self.assertTrue(lines[-1].startswith("twin_check: FAIL"))
+
     def test_strict_fails_on_warnings(self):
         draft = self.p("warn.md")
         with open(draft, "w") as fh:

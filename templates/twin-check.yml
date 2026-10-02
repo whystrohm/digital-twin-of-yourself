@@ -1,0 +1,47 @@
+# Copy to .github/workflows/twin-check.yml in the repo that holds your writing.
+# On every pull request it checks the changed drafts against your twin's rules
+# and shows each failure as an annotation on the diff.
+#
+# Set TWIN_RULES and DRAFTS below. Pin TWIN_REF to a commit SHA of
+# whystrohm/digital-twin-of-yourself so every run uses the same code.
+
+name: twin-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  TWIN_RULES: twins/acme/twin.rules.json   # your rules file, in this repo
+  DRAFTS: content                          # folder of .md/.txt drafts to check
+  TWIN_REF: main                           # replace with a commit SHA
+
+jobs:
+  twin-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: whystrohm/digital-twin-of-yourself
+          ref: ${{ env.TWIN_REF }}
+          path: .twin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check changed drafts
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff -z --name-only --diff-filter=AM "origin/$BASE_REF...HEAD" -- \
+            ":(glob)$DRAFTS/**/*.md" ":(glob)$DRAFTS/**/*.txt" > "$RUNNER_TEMP/changed"
+          if [ ! -s "$RUNNER_TEMP/changed" ]; then
+            echo "No changed drafts under $DRAFTS."
+            exit 0
+          fi
+          xargs -0 python3 .twin/scripts/twin_check.py --rules "$TWIN_RULES" --format github \
+            < "$RUNNER_TEMP/changed"

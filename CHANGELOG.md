@@ -13,7 +13,10 @@
 - Rules calibration: a Twin's rules must pass the person's own writing.
 - Synthetic sample corpus, drafts and edit pairs in `examples/`.
 - Tests on synthetic fixtures, `scripts/test.sh`, and a GitHub Actions workflow.
-- `docs/RULES.md` and `docs/FOUNDRKIT.md`.
+- `docs/RULES.md`, `docs/TEAMS.md` and `docs/FOUNDRKIT.md`.
+- `twin_check.py --format github`: GitHub Actions annotations on the pull request diff.
+- `templates/twin-check.yml`: a workflow that checks the drafts each pull request changes.
+- `assets/how-it-works.png`: one diagram of the whole system.
 - `tools/demo/make_demo.py`: rebuilds the demo GIF and hero image from real runs.
 
 ### Changed

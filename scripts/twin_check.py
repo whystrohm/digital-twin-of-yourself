@@ -313,11 +313,46 @@ def render_text(rules_path, doc, summary, files, strict):
     return "\n".join(out), bool(failed)
 
 
+def _gh(value):
+    """Escape a value for a GitHub Actions workflow command."""
+    return str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def render_github(summary, failed):
+    """One annotation per hit. File-level rate rules annotate their worst file."""
+    out = []
+    for s in summary:
+        if s["passed"]:
+            continue
+        level = "error" if s["severity"] == "error" else "warning"
+        title = "twin: %s" % s["id"]
+        for h in s["hits"]:
+            loc = "file=%s,line=%d" % (_gh(h["file"]), h["line"])
+            if h.get("column"):
+                loc += ",col=%d" % h["column"]
+            if s["type"] in ("banned_phrase", "banned_pattern"):
+                msg = '"%s"' % h["match"]
+            elif s["type"] == "max_rate":
+                msg = "%s rate %.3f in this file, limit %s" % (
+                    h["match"], (s["measured"] or {}).get(h["file"], 0.0), s["limit"])
+            else:
+                msg = h["match"]
+            if s.get("suggestion"):
+                msg += ". " + s["suggestion"]
+            out.append("::%s %s,title=%s::%s" % (level, loc, _gh(title).replace(",", "%2C").replace(":", "%3A"), _gh(msg)))
+    errors = sum(1 for s in summary if not s["passed"] and s["severity"] == "error")
+    warns = sum(1 for s in summary if not s["passed"] and s["severity"] == "warn")
+    out.append("twin_check: %s (%d error rule%s failed, %d warning rule%s failed)" % (
+        "FAIL" if failed else "PASS", errors, "" if errors == 1 else "s", warns, "" if warns == 1 else "s"))
+    return "\n".join(out)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rules", required=True, help="twin.rules.json")
     ap.add_argument("drafts", nargs="*", help="draft files or folders (.md, .txt)")
-    ap.add_argument("--format", choices=("text", "json"), default="text")
+    ap.add_argument("--format", choices=("text", "json", "github"), default="text",
+                    help="github prints ::error/::warning lines that GitHub Actions shows on the PR diff")
     ap.add_argument("--strict", action="store_true", help="warnings also fail")
     ap.add_argument("--lexicon", help="JSON hedge list for max_rate hedge rules")
     ap.add_argument("--export-foundrkit", metavar="PATH",
@@ -354,7 +389,9 @@ def main(argv=None):
     per_file = [check_file(path, label, doc["rules"], lexicon) for path, label in files]
     summary = summarise(doc["rules"], per_file)
     text, failed = render_text(args.rules, doc, summary, files, args.strict)
-    if args.format == "json":
+    if args.format == "github":
+        print(render_github(summary, failed))
+    elif args.format == "json":
         print(json.dumps({
             "rules": args.rules, "brand": doc["brand"], "profile_version": doc["profile_version"],
             "drafts": [label for _, label in files], "strict": args.strict,
