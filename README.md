@@ -1,20 +1,29 @@
 # Digital Twin of Yourself
 
-**Turn how you write, think and decide into a System Prompt any AI can use. Then let code measure your writing and check every draft against it.**
+**See how you actually write. Then check every draft, yours or an AI's, against it.**
 
-The model reads your writing and classifies it. Python measures it and checks drafts against your rules. The measuring runs offline and gives the same output every time.
+![The twin report building itself from a folder of writing](assets/report.gif)
 
-Built by [WhyStrohm](https://whystrohm.com).
+*The report it builds from a folder of writing: your score, the phrases you repeat, the documents where your voice drifts, and every flagged line with a fix. Shown on made-up sample writing.*
 
-![Demo: scan a folder, build the report, check a draft, fix it, check again](assets/demo.gif)
+## What you get
 
-*Recorded from real runs on the synthetic sample in `examples/`, by `tools/demo/make_demo.py`. Nothing in it is typed in by hand.*
+| | |
+|---|---|
+| **A report on your writing** | One page, opens in any browser. How long your sentences run, how often you hedge, which phrases you lean on, which documents sound unlike the rest, and the exact lines to fix. |
+| **A twin any AI can use** | A System Prompt that captures your voice and how you decide, built from your writing plus up to five questions about what the writing does not show. |
+| **A checker for every draft** | Rules code can check, line by line. Run it on a draft, or let it check every pull request so off-voice copy is caught before it ships. |
+| **A twin that keeps up** | Show it drafts next to what you actually sent. It proposes new rules from your edits. You approve each one, and every change is logged. |
+
+The AI does the judgment calls. Everything that can be counted or checked is done by code: it runs on your machine, gives the same answer every time, and strips emails, phone numbers and money amounts before anything is saved.
 
 ![How it works: measure, extract, enforce, improve](assets/how-it-works.png)
 
+Built by [WhyStrohm](https://whystrohm.com).
+
 ---
 
-## Three-minute start
+## Try it in three minutes
 
 You need Python 3.9 or newer. Nothing to install. Nothing leaves your machine.
 
@@ -22,10 +31,10 @@ You need Python 3.9 or newer. Nothing to install. Nothing leaves your machine.
 git clone https://github.com/whystrohm/digital-twin-of-yourself.git
 cd digital-twin-of-yourself
 
-# 1. Measure a folder of writing (here, the synthetic sample)
+# 1. Measure a folder of writing (here, the made-up sample)
 python3 scripts/twin_scan.py --corpus examples/sample-corpus --out patterns.json
 
-# 2. Turn the measurements into a report, one HTML file
+# 2. Build the report and open it
 python3 scripts/twin_report.py patterns.json --out twin-report.html
 open twin-report.html        # macOS; use xdg-open on Linux
 
@@ -33,11 +42,13 @@ open twin-report.html        # macOS; use xdg-open on Linux
 python3 scripts/twin_check.py --rules twins/example/twin.rules.json examples/drafts/supplier-update.md
 ```
 
-The report shows the phrases you repeat, where your voice drifts from one document to the next, flagged lines with a suggested fix, and a score. Step 3 fails on purpose: the draft hedges, uses a dash, and runs one sentence to 37 words. `examples/drafts/supplier-update.fixed.md` passes.
+![Terminal: scan a folder, build the report, check a draft, fix it, check again](assets/demo.gif)
+
+*Recorded from real runs by `tools/demo/make_demo.py`. Nothing in it is typed by hand.*
+
+Step 3 fails on purpose: the draft hedges, uses a dash, and runs one sentence to 37 words. `examples/drafts/supplier-update.fixed.md` passes.
 
 To run it on your own writing, copy your own `.md` or `.txt` files into one folder, scrub them (see [Safety](#safety)), and point `--corpus` at that folder.
-
-![Report from the synthetic sample](assets/hero.png)
 
 ---
 

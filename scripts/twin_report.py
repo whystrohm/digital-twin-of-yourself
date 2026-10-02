@@ -55,19 +55,19 @@ def bar_rows(rows, max_value, caption):
         return '<p class="empty">Nothing to show.</p>'
     max_value = max_value or 1
     out = ['<div class="bars" role="list" aria-label="%s">' % t(caption)]
-    for r in rows:
+    for i, r in enumerate(rows):
         w = max(0.0, min(100.0, 100.0 * r["value"] / max_value))
         cls = "bar flag" if r.get("flag") else "bar"
         tip = "%s: %s" % (r["label"], r["display"])
         out.append(
-            '<div class="row" role="listitem">'
+            '<div class="row" role="listitem" style="--d:%dms">'
             '<div class="lab">%s%s</div><div class="val">%s</div>'
             '<svg class="%s" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">'
             '<title>%s</title>'
             '<rect class="track" x="0" y="0" width="100" height="10"/>'
             '<rect class="fill" x="0" y="0" width="%.2f" height="10"/>%s</svg>'
             '%s</div>' % (
-                t(r["label"]),
+                min(i, 12) * 70, t(r["label"]),
                 ' <span class="tag">%s</span>' % t(r["tag"]) if r.get("tag") else "",
                 t(r["display"]), cls, t(tip), w,
                 ('<line class="tick" x1="%.2f" x2="%.2f" y1="0" y2="10"/>' % (r["tick"], r["tick"]))
@@ -81,17 +81,17 @@ def bar_rows(rows, max_value, caption):
 def histogram(hist, long_words):
     peak = max((b["count"] for b in hist), default=0) or 1
     cols = []
-    for b in hist:
+    for i, b in enumerate(hist):
         h = 100.0 * b["count"] / peak
         lo = int(b["label"].split("-")[0].rstrip("+"))
         over = lo > long_words
         cols.append(
-            '<div class="col%s"><div class="cnt">%d</div>'
+            '<div class="col%s" style="--d:%dms"><div class="cnt">%d</div>'
             '<svg viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true">'
             '<title>%s words: %d sentences</title>'
             '<rect class="fill" x="0" y="%.2f" width="10" height="%.2f"/></svg>'
             '<div class="cl">%s</div></div>' % (
-                " flag" if over else "", b["count"], t(b["label"]), b["count"],
+                " flag" if over else "", i * 70, b["count"], t(b["label"]), b["count"],
                 100 - h, h, t(b["label"])))
     return ('<div class="hist" role="img" aria-label="Sentence length histogram">%s</div>'
             '<p class="legend"><span class="key"></span> sentence count by length in words'
@@ -135,13 +135,14 @@ def section_score(c):
                      "note": "Needs 3 or more files of %d+ words." % 40})
     value = "n/a" if s["value"] is None else str(s["value"])
     return (
-        '<section id="%s-score" class="score">'
+        '<section id="%s-score" class="score reveal">'
         '<div class="hero"><div class="eyebrow">Score</div>'
-        '<div class="big">%s<span>/100</span></div>'
+        '<div class="big"><span class="num" style="--to:%s" aria-label="%s"><span class="v">%s</span></span><span class="of">/100</span></div>'
         '<p class="muted">Measured by code from your files. It shows how clean and how consistent the '
         'writing is. It is not a grade of quality.</p></div>'
         '<div class="parts">%s<p class="formula">%s</p></div></section>' % (
-            t(c["name"]), t(value), bar_rows(rows, 1, "Score parts"), t(s["formula"])))
+            t(c["name"]), s["value"] if s["value"] is not None else 0, t(value), t(value),
+            bar_rows(rows, 1, "Score parts"), t(s["formula"])))
 
 
 def section_repeats(c):
@@ -157,7 +158,7 @@ def section_repeats(c):
     mrows = [{"label": m["family"], "value": m["per_1k"], "display": "%s per 1k" % num(m["per_1k"]),
               "note": ", ".join(m["top_words"])} for m in meta]
     return (
-        '<section id="%s-repeats"><h2>Patterns you repeat</h2>'
+        '<section class="reveal" id="%s-repeats"><h2>Patterns you repeat</h2>'
         '<p class="muted">Phrases of 3 to 5 words used %d or more times, ranked by count.</p>%s'
         '<h3>Hedges</h3>%s'
         '<h3>Metaphor-family words</h3><p class="muted">Counted from a word list. A hit is a candidate, '
@@ -175,7 +176,7 @@ def section_drift(c):
     d = c["drift"]
     if d["eligible_files"] < 3:
         body = '<p class="empty">Drift needs 3 or more files of 40+ words. This corpus has %d.</p>' % d["eligible_files"]
-        return '<section id="%s-drift"><h2>Where your voice drifts</h2>%s</section>' % (t(c["name"]), body)
+        return '<section class="reveal" id="%s-drift"><h2>Where your voice drifts</h2>%s</section>' % (t(c["name"]), body)
     tick = 100.0 * d["threshold_z"] / DRIFT_CAP
     rows = []
     for f in d["files"]:
@@ -200,7 +201,7 @@ def section_drift(c):
              '<th class=n>Other files</th><th class=n>z</th></tr></thead><tbody>%s</tbody></table></div>'
              % "".join(detail)) if detail else '<p class="empty">No file sits outside its normal range.</p>'
     return (
-        '<section id="%s-drift"><h2>Where your voice drifts</h2>'
+        '<section class="reveal" id="%s-drift"><h2>Where your voice drifts</h2>'
         '<p class="muted">Each file against the other files. The bar is the largest gap in standard '
         'deviations; the tick marks %.1f, the drift line. Bars stop at %d.</p>%s'
         '<h3>What moved</h3>%s</section>' % (
@@ -223,22 +224,25 @@ def mark(snippet_text, match):
 def section_flags(c):
     fl = c["flags"]
     counts = fl["counts"]
-    head = '<p class="muted">%d hedges, %d long sentences, %d dashes. Fixes are computed, not written by a model.</p>' % (
-        counts["hedge"], counts["long_sentence"], counts["dash"])
+    def n(count, one, many):
+        return "%d %s" % (count, one if count == 1 else many)
+    head = '<p class="muted">%s, %s, %s. Fixes are computed, not written by a model.</p>' % (
+        n(counts["hedge"], "hedge", "hedges"), n(counts["long_sentence"], "long sentence", "long sentences"),
+        n(counts["dash"], "dash", "dashes"))
     if not fl["items"]:
-        return '<section id="%s-flags"><h2>Flagged lines</h2>%s<p class="empty">Nothing flagged.</p></section>' % (
+        return '<section class="reveal" id="%s-flags"><h2>Flagged lines</h2>%s<p class="empty">Nothing flagged.</p></section>' % (
             t(c["name"]), head)
     cards = []
-    for f in fl["items"]:
+    for i, f in enumerate(fl["items"]):
         fix_label = "Fix" if f.get("fix_is_rewrite") else "Do"
         cards.append(
-            '<li class="flagcard"><div class="where">%s:%d <span class="kind">%s</span></div>'
+            '<li class="flagcard" style="--d:%dms"><div class="where">%s:%d <span class="kind">%s</span></div>'
             '<div class="line">%s</div><div class="why">%s</div>'
             '<div class="fix"><span>%s</span> %s</div></li>' % (
-                t(f["file"]), f["line"], t(f["kind"].replace("_", " ")),
+                min(i, 8) * 90, t(f["file"]), f["line"], t(f["kind"].replace("_", " ")),
                 mark(f["snippet"], f.get("match")), t(f["why"]), fix_label, t(short(f["fix"]))))
     more = '<p class="muted">%d more not shown. Raise --max-flags to see them.</p>' % fl["truncated"] if fl["truncated"] else ""
-    return '<section id="%s-flags"><h2>Flagged lines with a suggested fix</h2>%s<ol class="flags">%s</ol>%s</section>' % (
+    return '<section class="reveal" id="%s-flags"><h2>Flagged lines with a suggested fix</h2>%s<ol class="flags">%s</ol>%s</section>' % (
         t(c["name"]), head, "".join(cards), more)
 
 
@@ -257,7 +261,7 @@ def section_shape(c, long_words):
         ("Emoji", num(f["emoji"])),
     ]
     dl = "".join("<div><dt>%s</dt><dd>%s</dd></div>" % (t(k), t(v)) for k, v in facts)
-    return ('<section id="%s-shape"><h2>Shape of the writing</h2>%s<dl class="facts">%s</dl></section>' % (
+    return ('<section class="reveal" id="%s-shape"><h2>Shape of the writing</h2>%s<dl class="facts">%s</dl></section>' % (
         t(c["name"]), histogram(sl["histogram"], long_words), dl))
 
 
@@ -306,7 +310,7 @@ nav{display:flex;flex-wrap:wrap;gap:8px 18px;margin:18px 0 0}nav a{color:var(--i
 letter-spacing:.08em;text-transform:uppercase}nav a:hover{color:var(--ink)}
 .score{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:32px;margin-top:36px;align-items:start}
 .big{font-size:clamp(88px,16vw,148px);font-weight:800;line-height:.9;letter-spacing:-.04em;font-stretch:80%}
-.big span{font-size:.24em;color:var(--i66);letter-spacing:0;margin-left:6px;font-weight:600}
+.big .of{font-size:.24em;color:var(--i66);letter-spacing:0;margin-left:6px;font-weight:600}
 .formula{font-size:12px;color:var(--i40);margin-top:14px}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--i22);border:1px solid var(--i22);margin:28px 0 0}
 .tile{background:var(--bg);padding:14px 16px}.tv{font-size:22px}.tl{font-size:13px;color:var(--i66)}
@@ -333,17 +337,45 @@ ol.flags{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;g
 .where{font-size:12px;color:var(--i66)}.kind{color:var(--ink);border-left:2px solid var(--sig);padding-left:6px;margin-left:8px}
 .line{margin:6px 0 4px;overflow-wrap:anywhere}.why{font-size:14px;color:var(--i66)}
 .fix{font-size:14px;margin-top:6px;overflow-wrap:anywhere}.fix span{font-size:11px;color:var(--i66);text-transform:uppercase;letter-spacing:.1em;margin-right:6px}
-mark{background:none;color:var(--ink);border-bottom:2px solid var(--sig)}
+mark{color:var(--ink)}
 dl.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--i22);border:1px solid var(--i22);margin:24px 0 0}
 dl.facts div{background:var(--bg);padding:12px 14px}dt{font-size:13px;color:var(--i66)}dd{margin:2px 0 0;font-size:17px}
 ul.plain{padding-left:18px}
 .corpus{margin-top:20px}.corpus+.corpus,#compare+.corpus{border-top:1px solid var(--i22);margin-top:48px;padding-top:8px}
 footer{margin-top:64px;border-top:1px solid var(--i22);padding-top:16px;font-size:13px;color:var(--i40)}
+@property --n{syntax:"<integer>";inherits:false;initial-value:0}
+html.anim .num .v{display:none}
+html.anim .num{counter-reset:n var(--n)}
+html.anim .num::after{content:counter(n)}
+html.anim .reveal.in .num{--n:var(--to);transition:--n 1.4s cubic-bezier(.2,.8,.2,1)}
+html.anim .reveal .row svg .fill,html.anim .reveal .col svg .fill{transform-box:fill-box}
+html.anim .reveal .row svg .fill{transform-origin:0 50%;transform:scaleX(0)}
+html.anim .reveal .col svg .fill{transform-origin:50% 100%;transform:scaleY(0)}
+html.anim .reveal .bar.flag .fill{fill:var(--i66)}
+html.anim .reveal .tag,html.anim .reveal .cnt{opacity:0}
+html.anim .reveal .flagcard{opacity:0;transform:translateY(10px)}
+html.anim .reveal ol.flags{background:transparent;border-color:transparent}
+html.anim .reveal.in ol.flags{background:var(--i22);border-color:var(--i22);transition:background .4s ease .3s,border-color .4s ease .3s}
+mark{border-bottom:0;background:linear-gradient(var(--sig),var(--sig)) no-repeat 0 100%/100% 2px;padding-bottom:1px}
+html.anim .reveal mark{background-size:0 2px}
+html.anim .reveal.in .row svg .fill,html.anim .reveal.in .col svg .fill{transform:none;
+transition:transform .9s cubic-bezier(.2,.8,.2,1) var(--d,0ms),fill .35s ease calc(var(--d,0ms) + 750ms)}
+html.anim .reveal.in .bar.flag .fill{fill:var(--sig)}
+html.anim .reveal.in .tag,html.anim .reveal.in .cnt{opacity:1;transition:opacity .4s ease calc(var(--d,0ms) + 800ms)}
+html.anim .reveal.in .flagcard{opacity:1;transform:none;transition:opacity .5s ease var(--d,0ms),transform .5s cubic-bezier(.2,.8,.2,1) var(--d,0ms)}
+html.anim .reveal.in mark{background-size:100% 2px;transition:background-size .5s ease calc(var(--d,0ms) + 350ms)}
 @media (max-width:720px){.score{grid-template-columns:1fr;gap:12px}.tiles,dl.facts{grid-template-columns:repeat(2,minmax(0,1fr))}
 .wrap{padding-top:24px}header{flex-direction:column-reverse}.hist{height:170px}.col svg{height:120px}}
 """
 
+HEAD_JS = ("if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&'IntersectionObserver' in window)"
+           "document.documentElement.classList.add('anim')")
+
 JS = """
+(function(){var r=document.documentElement;if(!r.classList.contains('anim')||window.__twinManual)return;
+var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){
+e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -12% 0px'});
+document.querySelectorAll('.reveal').forEach(function(s){io.observe(s)})})();
 (function(){var r=document.documentElement,b=document.getElementById('theme');
 function cur(){return r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}
 function label(){b.textContent=cur()==='dark'?'Light':'Dark'}
@@ -378,13 +410,13 @@ def render(data, title=None):
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<title>Twin Report</title><style>%s</style></head><body><div class="wrap">'
+        '<title>Twin Report</title><style>%s</style><script>%s</script></head><body><div class="wrap">'
         '<header><div><div class="eyebrow">Twin report</div><h1>%s</h1>'
         '<p class="meta">Patterns measured by code from your own files. Snippets are short and redacted.</p></div>'
         '<button class="theme" id="theme" type="button" aria-label="Switch colour theme">Light</button></header>'
         '%s%s<footer>Generated by twin_report.py from %s (schema %s v%s). This file makes no network requests. '
         'Emails, phone numbers and money amounts are redacted.</footer></div><script>%s</script></body></html>\n' % (
-            CSS, t(name), compare, "".join(parts), t(data.get("tool", "twin_scan.py")),
+            CSS, HEAD_JS, t(name), compare, "".join(parts), t(data.get("tool", "twin_scan.py")),
             t(data.get("schema")), t(data.get("version")), JS))
 
 

@@ -88,11 +88,107 @@ def terminal_page(step, label, blocks, fonts, size=19):
                 font_css(fonts), TERM_CSS, extra, html.escape(step), html.escape(label), "\n".join(body)))
 
 
+SHOW_FPS = 15
+
+
+def record_showcase(browser, report, fonts, frames_dir):
+    """Frame-by-frame recording of the real report animating.
+
+    The report's own reveal animations run, but each frame sets every
+    animation's clock exactly, so the result is smooth and repeatable.
+    Returns the list of frame paths, one per 1/SHOW_FPS second.
+    """
+    page = browser.new_page(viewport={"width": W, "height": H}, color_scheme="dark")
+    page.add_init_script("window.__twinManual = true")
+    page.goto("file://" + report)
+    if fonts:
+        page.add_style_tag(content=font_css(fonts))
+    page.add_style_tag(content="html{zoom:1.3}")
+    page.wait_for_timeout(300)
+    shots = []
+    step = 1000.0 / SHOW_FPS
+
+    def snap():
+        path = os.path.join(frames_dir, "show-%04d.png" % len(shots))
+        page.screenshot(path=path)
+        shots.append(path)
+
+    def hold(seconds):
+        for _ in range(int(round(seconds * SHOW_FPS))):
+            snap()
+
+    def scroll_to(anchor, seconds):
+        start = page.evaluate("window.scrollY")
+        end = page.evaluate("""(a) => { const y0 = window.scrollY;
+            document.getElementById(a).scrollIntoView({block: 'start'});
+            const y = Math.max(0, window.scrollY - 30); window.scrollTo(0, y0); return y; }""", anchor)
+        n = max(1, int(round(seconds * SHOW_FPS)))
+        for i in range(1, n + 1):
+            x = i / n
+            ease = x * x * (3 - 2 * x)
+            page.evaluate("(y) => window.scrollTo(0, y)", start + (end - start) * ease)
+            snap()
+
+    def play(anchor, seconds):
+        page.evaluate("""(a) => { const s = document.getElementById(a); s.classList.add('in');
+            getComputedStyle(s).opacity; window.__anims = s.getAnimations({subtree: true});
+            window.__anims.forEach(x => x.pause()); }""", anchor)
+        n = int(round(seconds * SHOW_FPS))
+        for i in range(n + 1):
+            page.evaluate("(t) => window.__anims.forEach(x => { x.currentTime = t; })", i * step)
+            snap()
+        page.evaluate("() => window.__anims.forEach(x => x.finish())")
+
+    play("sample-corpus-score", 1.5)
+    hold(1.0)
+    scroll_to("sample-corpus-repeats", 0.7)
+    play("sample-corpus-repeats", 1.3)
+    hold(0.8)
+    scroll_to("sample-corpus-drift", 0.7)
+    play("sample-corpus-drift", 1.7)
+    hold(1.3)
+    scroll_to("sample-corpus-flags", 0.7)
+    play("sample-corpus-flags", 1.5)
+    hold(1.1)
+    scroll_to("sample-corpus-shape", 0.7)
+    play("sample-corpus-shape", 1.3)
+    hold(0.9)
+    page.evaluate("() => { window.scrollTo(0, 0); document.getElementById('theme').click(); }")
+    page.wait_for_timeout(100)
+    hold(1.6)
+    page.close()
+    return shots
+
+
+def encode_gif(frames, fps, out, work, name):
+    """Numbered frames to a GIF with one shared palette."""
+    seq = os.path.join(work, name)
+    os.makedirs(seq)
+    for i, path in enumerate(frames):
+        shutil.copyfile(path, os.path.join(seq, "%04d.png" % i))
+    pattern = os.path.join(seq, "%04d.png")
+    palette = os.path.join(work, name + "-palette.png")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", str(fps), "-i", pattern,
+                    "-vf", "scale=%d:-1:flags=lanczos,palettegen=max_colors=96:stats_mode=diff" % W,
+                    palette], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", str(fps), "-i", pattern, "-i", palette,
+                    "-lavfi", "scale=%d:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=none:diff_mode=rectangle" % W,
+                    "-loop", "0", out], check=True)
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", out],
+                           capture_output=True, text=True, check=True)
+    seconds = float(probe.stdout.strip())
+    if seconds >= 20:
+        raise SystemExit("%s runs %.2f s; keep it under 20" % (out, seconds))
+    return seconds
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--font-dir")
     ap.add_argument("--out-gif", default=os.path.join(ROOT, "assets", "demo.gif"))
     ap.add_argument("--out-hero", default=os.path.join(ROOT, "assets", "hero.png"))
+    ap.add_argument("--out-showcase", default=os.path.join(ROOT, "assets", "report.gif"))
+    ap.add_argument("--out-social", default=os.path.join(ROOT, "assets", "social-preview.png"))
     ap.add_argument("--out-diagram", default=os.path.join(ROOT, "assets", "how-it-works.png"))
     ap.add_argument("--keep", action="store_true", help="keep the frames folder")
     args = ap.parse_args()
@@ -159,7 +255,8 @@ def main():
         term("01-scan", "1/4", "scan a folder of writing", [(scan_cmd, scan_out)], 2.4)
         term("02-report", "2/4", "build the report", [(scan_cmd, scan_out), (rep_cmd, rep_out)], 1.2)
 
-        page = browser.new_page(viewport={"width": W, "height": H}, color_scheme="dark")
+        page = browser.new_page(viewport={"width": W, "height": H}, color_scheme="dark",
+                                reduced_motion="reduce")
         page.goto("file://" + report)
         if fonts:
             page.add_style_tag(content=font_css(fonts))
@@ -173,7 +270,8 @@ def main():
         report_shot("05-drift", "sample-corpus-drift", 2.2, page)
         report_shot("06-flags", "sample-corpus-flags", 2.0, page)
 
-        hero = browser.new_page(viewport={"width": 1200, "height": 675}, color_scheme="dark")
+        hero = browser.new_page(viewport={"width": 1200, "height": 675}, color_scheme="dark",
+                                reduced_motion="reduce")
         hero.goto("file://" + report)
         if fonts:
             hero.add_style_tag(content=font_css(fonts))
@@ -194,6 +292,18 @@ def main():
         dpage.wait_for_timeout(300)
         dpage.screenshot(path=args.out_diagram)
         dpage.close()
+
+        showcase = record_showcase(browser, report, fonts, frames)
+
+        import social
+        spath = os.path.join(work, "social.html")
+        with open(spath, "w", encoding="utf-8") as fh:
+            fh.write(social.page(os.path.abspath(args.out_hero), font_css(fonts)))
+        spage = browser.new_page(viewport={"width": social.W, "height": social.H}, device_scale_factor=2)
+        spage.goto("file://" + spath)
+        spage.wait_for_timeout(300)
+        spage.screenshot(path=args.out_social)
+        spage.close()
 
         term("07-check", "3/4", "check a draft against the twin's rules", [(chk1_cmd, chk1_out)], 2.8, size=15)
         term("08-fix", "4/4", "fix it", [(diff_cmd, diff_out)], 2.0)
@@ -227,8 +337,11 @@ def main():
     if seconds >= 20:
         raise SystemExit("the GIF runs %.2f s; keep it under 20" % seconds)
     print("wrote %s (%.2f s measured, %d KB)" % (args.out_gif, seconds, os.path.getsize(args.out_gif) // 1024))
+    secs = encode_gif(showcase, SHOW_FPS, args.out_showcase, work, "showcase")
+    print("wrote %s (%.2f s measured, %d KB)" % (args.out_showcase, secs, os.path.getsize(args.out_showcase) // 1024))
     print("wrote %s" % args.out_hero)
     print("wrote %s" % args.out_diagram)
+    print("wrote %s" % args.out_social)
     if args.keep:
         print("frames kept in %s" % frames)
     else:

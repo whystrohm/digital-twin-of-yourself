@@ -23,22 +23,28 @@ TEXT_EXTENSIONS = (".md", ".txt")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+*~`-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 _EXT = r"(?:\s?(?:x|ext\.?)\s?\d{1,6})?"
 _PHONE = re.compile(
-    # +44 20 7946 0958, +1 (617) 555-0100
-    r"(?<![\w$])\+\d{1,3}(?:[\s.-]?\(?\d{1,4}\)?){2,5}" + _EXT + r"(?!\d)"
-    # (617) 555-0100, 617.555.0100x22
-    r"|(?<![\w$])(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}" + _EXT + r"(?!\d)"
+    # +44 20 7946 0958, +1 (617) 555-0100: a plus, then digit groups split by separators
+    r"(?<![\w$])\+\d{1,3}(?:[\s.-]\(?\d{1,4}\)?){2,5}" + _EXT + r"(?!\d|\.\d)"
+    # (617) 555-0100, 617.555.0100x22, 6175550100
+    r"|(?<![\w$.])(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}" + _EXT + r"(?!\d|\.\d)"
     # 555-1234
     r"|(?<![\w$.-])\d{3}-\d{4}(?![\d-])",
     re.IGNORECASE,
 )
+
+
+def _phone_sub(m):
+    # A real number has at least 7 digits. This keeps scores like +21.9 intact.
+    return REDACTION_TOKENS["phone"] if len(re.sub(r"\D", "", m.group(0))) >= 7 else m.group(0)
+
+
 _CURRENCY_SIGNS = "$\u20ac\u00a3\u00a5\u20b9\u20a9\u20bd\u20ba\u20aa\u20a6\u20b1"
 _AMOUNT = r"\d[\d,]*(?:\.\d+)?"
 _SCALE = r"(?:\s?(?:k|m|mm|bn|million|billion|thousand)\b)?"
 _MONEY = re.compile(
     r"[" + _CURRENCY_SIGNS + r"]\s?" + _AMOUNT + _SCALE
     + r"|\b(?:USD|EUR|GBP|CAD|AUD|JPY|INR|CHF|CNY)\s?" + _AMOUNT + _SCALE
-    + r"|\b" + _AMOUNT + r"\s?(?:dollars?|usd|eur|euros?|gbp|pounds?|yen|rupees?)\b"
-    + r"|\b" + _AMOUNT + r"\s?(?:k|bn)\b",
+    + r"|\b" + _AMOUNT + r"\s?(?:dollars?|usd|eur|euros?|gbp|pounds?|yen|rupees?)\b",
     re.IGNORECASE,
 )
 
@@ -52,7 +58,10 @@ REDACTION_TOKENS = {
 def redact(text, counts=None):
     """Replace emails, phone numbers and money amounts. Updates counts."""
     for kind, pattern in (("email", _EMAIL), ("phone", _PHONE), ("amount", _MONEY)):
-        text, n = pattern.subn(REDACTION_TOKENS[kind], text)
+        repl = _phone_sub if kind == "phone" else REDACTION_TOKENS[kind]
+        before = text
+        text = pattern.sub(repl, text)
+        n = text.count(REDACTION_TOKENS[kind]) - before.count(REDACTION_TOKENS[kind])
         if counts is not None and n:
             counts[kind] = counts.get(kind, 0) + n
     return text

@@ -539,10 +539,12 @@ class TestReviewRegressions(Tmp):
             self.assertNotIn("555-0100", out, fmt)
 
     def test_redaction_coverage(self):
-        for raw in ("+44 20 7946 0958", "555-1234", "617.555.0100x22", "USD 500", "EUR 40", "500k",
+        for raw in ("+44 20 7946 0958", "555-1234", "617.555.0100x22", "USD 500", "EUR 40", "$500k",
                     "\u00a55000", "\u20b95,000", "1,200 euros", "**bob**@example.com"):
             self.assertTrue(tl.redact(raw).startswith("[redacted-"), raw)
-        for keep in ("Call 2026-10-02 at 9.30", "version 1.2.3", "We shipped 300 boxes in 2026."):
+        for keep in ("Call 2026-10-02 at 9.30", "version 1.2.3", "We shipped 300 boxes in 2026.",
+                     "+21.9", "z +4.2", "-2.5", "Dashes per 1k words", "score 92/100", "+25.0", "2.0.0",
+                     "1,200 words", "ran 5k steps", "p=0.035", "+3 points"):
             self.assertEqual(tl.redact(keep), keep)
 
     def test_emphasised_email_never_reaches_output(self):

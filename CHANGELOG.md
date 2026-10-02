@@ -1,6 +1,6 @@
 # Changelog
 
-## [3.0.0] - Unreleased
+## [3.0.0] - 2026-10-02
 
 ### Added
 - `scripts/twin_scan.py`: measures a folder of `.md`/`.txt` writing and writes `patterns.json`. Sentence length distribution, hedge rate, question rate, repeated 3 to 5 word phrases, metaphor-family words from a configurable list, formatting habits, and per-file drift. Several `--corpus` flags add a comparison.
@@ -17,6 +17,8 @@
 - `twin_check.py --format github`: GitHub Actions annotations on the pull request diff.
 - `templates/twin-check.yml`: a workflow that checks the drafts each pull request changes.
 - `assets/how-it-works.png`: one diagram of the whole system.
+- The report animates as you scroll: the score counts up, bars grow, drifting files and flagged lines are marked. Off with reduced motion or without JavaScript.
+- `assets/report.gif`: a frame-exact recording of the report animating, and a new share image.
 - `tools/demo/make_demo.py`: rebuilds the demo GIF and hero image from real runs.
 
 ### Changed
