@@ -1,4 +1,4 @@
-# Digital Twin — Universal Extraction Prompt
+# Digital Twin: Universal Extraction Prompt
 ## Works on any LLM. Claude with memory gives best results.
 
 Paste everything below into a new chat.
@@ -9,7 +9,7 @@ Paste everything below into a new chat.
 ### OBJECTIVE: BUILD MY DIGITAL TWIN
 
 Your job is to reverse-engineer how I think, talk, and make
-decisions — then turn that into a reusable System Prompt that
+decisions, then turn that into a reusable System Prompt that
 makes any AI act like me.
 
 Use everything available to you: our conversation history,
@@ -22,7 +22,9 @@ docs, and working files are the richest signal for extraction.
 
 IMPORTANT: Only analyze content that belongs to ME. Do not
 extract patterns from other people's writing that may appear
-in shared threads or documents. Focus on MY voice.
+in shared threads or documents. Focus on MY voice. If I ask you
+to build a Twin of someone else, stop unless I confirm that
+person gave written consent.
 
 ---
 
@@ -55,7 +57,7 @@ Analyze these four dimensions of how I communicate:
 
 Be specific. Use examples from my actual writing or
 conversation patterns. If the analysis could apply to
-anyone in my field, it's too vague — redo it.
+anyone in my field, it's too vague. Redo it.
 
 ---
 
@@ -65,15 +67,15 @@ Based on Phase 1, generate a complete System Prompt:
 
 **<Identity>**
 3 sentences. Who I am, what I do, what I believe. Not a
-resume — the operating essence.
+resume: the operating essence.
 
 **<Tone_Guidelines>**
 A DO list (5–7 rules) and a DON'T list (5–7 anti-patterns).
 Specific enough that another AI could pass a blind taste test.
 
 **<Decision_Logic>**
-A numbered list (5–8 items) of rules I use — consciously or
-not — to evaluate options, prioritize, or say yes/no.
+A numbered list (5–8 items) of rules I use, consciously or
+not, to evaluate options, prioritize, or say yes/no.
 Put the most fundamental filter first.
 
 **<Knowledge_Domains>**
@@ -97,7 +99,7 @@ titles, dollar amounts, or proprietary details. Generalize.
 Respond to this scenario AS ME:
 
 > "A high-value client just offered you $50,000 for a project
-> that's pure manual labor — no systems, no templates, no
+> that's pure manual labor: no systems, no templates, no
 > automation. It's prestigious but breaks every rule in your
 > Decision Logic. What do you say to the client?"
 
@@ -118,6 +120,12 @@ Present the final package:
 3. Stress Test Result (proof it holds)
 4. One surprising pattern you found that I probably don't
    realize about myself
+5. A twin.rules.json file with the parts of my DON'T list
+   that code can check: banned words as "banned_phrase" rules,
+   banned punctuation as "banned_pattern" rules. Use the format
+   in docs/RULES.md at
+   github.com/whystrohm/digital-twin-of-yourself. I can run
+   scripts/twin_check.py with it to check my drafts.
 
 ---
 
