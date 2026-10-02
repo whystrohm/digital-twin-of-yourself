@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.0.1] - 2026-10-02
+
+### Changed
+- README opens with `assets/film.gif`: one object carries the story from files to score, sentence rhythm, drift and a checked draft. Every number and sentence on screen comes from the tool's real output on the sample. `tools/demo/film.py` holds the film; `make_demo.py` renders it frame by frame.
+- The README shows the report itself as a still under "What you get".
+
+### Removed
+- `assets/demo.gif` (terminal recording) and `assets/report.gif` (scrolling capture of the report), replaced by the film.
+
 ## [3.0.0] - 2026-10-02
 
 ### Added
@@ -19,7 +28,7 @@
 - `assets/how-it-works.png`: one diagram of the whole system.
 - The report animates as you scroll: the score counts up, bars grow, drifting files and flagged lines are marked. Off with reduced motion or without JavaScript.
 - `assets/report.gif`: a frame-exact recording of the report animating, and a new share image.
-- `tools/demo/make_demo.py`: rebuilds the demo GIF and hero image from real runs.
+- `tools/demo/make_demo.py`: rebuilds the README visuals from real runs.
 
 ### Changed
 - Layer 3 measures with the scripts instead of asking the model to estimate counts.

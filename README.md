@@ -2,18 +2,20 @@
 
 **See how you actually write. Then check every draft, yours or an AI's, against it.**
 
-![The twin report building itself from a folder of writing](assets/report.gif)
+![From a folder of writing to a score, your sentence rhythm, the file that drifts, and a draft checked and fixed](assets/film.gif)
 
-*The report it builds from a folder of writing: your score, the phrases you repeat, the documents where your voice drifts, and every flagged line with a fix. Shown on made-up sample writing.*
+*Every number and sentence in this film is the tool's real output on made-up sample writing. Rebuilt by `tools/demo/make_demo.py`.*
 
 ## What you get
 
-| | |
+| You get | What it is |
 |---|---|
 | **A report on your writing** | One page, opens in any browser. How long your sentences run, how often you hedge, which phrases you lean on, which documents sound unlike the rest, and the exact lines to fix. |
 | **A twin any AI can use** | A System Prompt that captures your voice and how you decide, built from your writing plus up to five questions about what the writing does not show. |
 | **A checker for every draft** | Rules code can check, line by line. Run it on a draft, or let it check every pull request so off-voice copy is caught before it ships. |
 | **A twin that keeps up** | Show it drafts next to what you actually sent. It proposes new rules from your edits. You approve each one, and every change is logged. |
+
+![The report, as it opens in your browser](assets/hero.png)
 
 The AI does the judgment calls. Everything that can be counted or checked is done by code: it runs on your machine, gives the same answer every time, and strips emails, phone numbers and money amounts before anything is saved.
 
@@ -41,10 +43,6 @@ open twin-report.html        # macOS; use xdg-open on Linux
 # 3. Check a draft against a twin's rules
 python3 scripts/twin_check.py --rules twins/example/twin.rules.json examples/drafts/supplier-update.md
 ```
-
-![Terminal: scan a folder, build the report, check a draft, fix it, check again](assets/demo.gif)
-
-*Recorded from real runs by `tools/demo/make_demo.py`. Nothing in it is typed by hand.*
 
 Step 3 fails on purpose: the draft hedges, uses a dash, and runs one sentence to 37 words. `examples/drafts/supplier-update.fixed.md` passes.
 
@@ -174,7 +172,7 @@ Full checklist: [SAFETY_CHECKLIST.md](SAFETY_CHECKLIST.md).
 ├── examples/ ................. Before/after, profiles, synthetic sample data
 ├── validation/ ............... Stress tests, rubric, blind eval
 ├── tests/ .................... Unit tests on synthetic fixtures
-└── tools/demo/ ............... Rebuilds the demo GIF, hero image and diagram
+└── tools/demo/ ............... Rebuilds the film, report still, diagram and share card
 ```
 
 ## What's next
