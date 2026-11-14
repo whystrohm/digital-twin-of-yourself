@@ -3,7 +3,7 @@
 ## Report a problem
 
 Write to hello@whystrohm.com with "Digital Twin security" in the subject. Please do not
-open a public issue. You will get a reply within five working days.
+open a public issue. You will get a reply within three working days.
 
 ## What this repo does with your data
 
