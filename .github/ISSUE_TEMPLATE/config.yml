@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A twin built for your company
+    url: https://whystrohm.com/apply
+    about: WhyStrohm builds and runs the voice system for founder-led companies. Or write to hello@whystrohm.com.
+  - name: Report a security problem
+    url: https://github.com/whystrohm/digital-twin-of-yourself/blob/main/SECURITY.md
+    about: Please do not open a public issue for these.
