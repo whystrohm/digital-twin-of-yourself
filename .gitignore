@@ -7,3 +7,5 @@ __pycache__/
 patterns.json
 twin-report.html
 validation/results/
+
+twin/head/yunet.onnx

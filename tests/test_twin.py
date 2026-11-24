@@ -646,9 +646,9 @@ class TestReviewRegressions(Tmp):
         finally:
             twin_eval.call = real
             del os.environ["ANTHROPIC_API_KEY"]
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         data = tl.load_json(out)
-        self.assertTrue(data["complete"])
+        self.assertFalse(data["complete"])
         self.assertEqual([t["result"] for t in data["tests"]], ["error", "error"])
 
 

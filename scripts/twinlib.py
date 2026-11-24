@@ -4,11 +4,14 @@ Standard library only. No network access. Every function here is
 deterministic: the same input gives the same output, byte for byte.
 """
 
+import contextlib
 import hashlib
 import json
 import os
 import re
+import stat
 import statistics
+import sys
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 TEXT_EXTENSIONS = (".md", ".txt")
@@ -326,9 +329,49 @@ def sentence_has_any(text, compiled):
 # ---------------------------------------------------------------- files
 
 
-def list_text_files(root):
+@contextlib.contextmanager
+def _sample_directory(path):
+    """Open every directory from the filesystem root without following links."""
+    if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("Bounded sample reads are unavailable on this platform.")
+    parts = [p for p in os.path.abspath(path).split(os.sep) if p]
+    if sys.platform == "darwin" and parts and parts[0] in ("tmp", "var"):
+        alias = os.sep + parts[0]
+        if os.path.islink(alias) and os.path.realpath(alias) == "/private" + alias:
+            parts.insert(0, "private")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(os.sep, flags)
+    try:
+        for part in parts:
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def list_text_files(root, bounded=False):
     """All .md/.txt files under root, sorted, skipping hidden folders."""
     root = os.path.abspath(root)
+    if bounded:
+        found = []
+        try:
+            with _sample_directory(root) as parent:
+                for rel, dirs, files, directory in os.fwalk(".", dir_fd=parent, follow_symlinks=False):
+                    dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+                    for name in files:
+                        if name.startswith(".") or not name.lower().endswith(TEXT_EXTENSIONS):
+                            continue
+                        try:
+                            mode = os.stat(name, dir_fd=directory, follow_symlinks=False).st_mode
+                        except OSError:
+                            continue
+                        if stat.S_ISREG(mode):
+                            found.append(os.path.normpath(os.path.join(root, rel, name)))
+        except OSError:
+            return []
+        return sorted(found)
     if os.path.isfile(root):
         return [root]
     found = []
@@ -338,13 +381,36 @@ def list_text_files(root):
             if name.startswith("."):
                 continue
             if name.lower().endswith(TEXT_EXTENSIONS):
-                found.append(os.path.join(dirpath, name))
+                p = os.path.join(dirpath, name)
+                if os.path.realpath(p).startswith(os.path.realpath(root) + os.sep):   # a link may not lead out of the chosen folder
+                    found.append(p)
     return sorted(found)
 
 
-def read_text(path):
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
-        return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+def read_text(path, root=None):
+    """Read text. A root requires a regular file opened beneath that directory.
+
+    Bounded reads reject links and require directory-relative no-follow opens.
+    Platforms without those primitives fail closed for this optional mode.
+    """
+    if root is None:
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+            return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+    root, path = os.path.abspath(root), os.path.abspath(path)
+    if os.path.commonpath((root, path)) != root or path == root:
+        raise ValueError("The sample must be a regular file beneath the selected folder.")
+    with _sample_directory(os.path.dirname(path)) as directory:
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        fd = os.open(os.path.basename(path), flags, dir_fd=directory)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("The sample is not a regular file.")
+            with os.fdopen(fd, "r", encoding="utf-8-sig", errors="replace") as fh:
+                fd = None
+                return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+        finally:
+            if fd is not None:
+                os.close(fd)
 
 
 def sha256_file(path):

@@ -1,0 +1,405 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Twin</title><link rel="icon" href="data:,"><style>
+@font-face{font-family:Arch;src:url(/Archivo-VF.ttf);font-weight:100 900;font-stretch:62% 125%}
+@font-face{font-family:Plex;src:url(/IBMPlexMono-Regular.ttf)}
+:root,body{--g:#07080A;--ink:246,245,242;--sig:#E4552A;--fg:rgb(var(--ink));--mid:rgba(var(--ink),.62);--low:rgba(var(--ink),.36);--line:rgba(var(--ink),.14);--cw:min(288px,22vw)}
+body.neg{--g:#F1EFEA;--ink:7,8,10;--sig:#C9401A}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--g);color:var(--fg);font:450 15px/1.4 Arch,sans-serif;overflow:hidden;transition:background .12s;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum"}
+button,input,textarea{font:inherit;color:inherit;background:none;border:0;border-radius:0;outline:0;padding:0}button{cursor:pointer;text-align:left}
+:focus-visible{outline:2px solid var(--sig);outline-offset:3px}input:focus-visible,textarea:focus-visible{outline:0}
+.k,.row .s,.vrow .s,.d .s,h2 span,#src,#hint,.fine,#top,#chips,#bar .sw{font:400 10.5px/1.5 Plex,monospace;letter-spacing:.07em;text-transform:uppercase}
+#name{position:fixed;left:50%;top:45%;transform:translate(-50%,-50%);font:850 100px/.74 Arch;font-stretch:62%;letter-spacing:-.015em;color:var(--sig);text-transform:uppercase;white-space:nowrap;user-select:none;opacity:0;transition:opacity 1.6s}
+body.on #name{opacity:1}body.focus #name,body.talk #name,body.rcp #name,body.sheet #name{opacity:.12;transition-duration:.5s}
+#gl,#ov{position:fixed;inset:0;width:100%;height:100%}#gl{touch-action:none;cursor:grab}#gl:active{cursor:grabbing}#ov{pointer-events:none}
+.fade{opacity:0;transition:opacity 1s 1s}body.on .fade{opacity:1}
+#top{position:fixed;left:30px;right:30px;top:20px;display:flex;justify-content:space-between;align-items:center;color:var(--mid);height:24px}
+#brand b{font-weight:400;color:var(--fg)}#lens{position:absolute;left:50%;transform:translateX(-50%);display:flex;gap:22px}
+#top button{padding:5px 0;color:var(--mid)}#top button:hover,#lens .sel{color:var(--fg)}#lens .sel{box-shadow:0 1.5px var(--fg)}#tr{display:flex;gap:22px;align-items:center}#sends{color:var(--low)}#sends b{font-weight:400;color:var(--mid)}
+.col{position:fixed;top:70px;bottom:62px;width:var(--cw);display:flex;flex-direction:column;gap:34px}#L{left:30px}#R{right:30px}
+body.rcpR #R,body.rcpL #L{opacity:.08!important;transition:opacity .2s;pointer-events:none}
+.sec{display:flex;flex-direction:column;min-height:0;flex:0 1 auto}.sec.grow{flex:1 1 0}
+h2{font:800 34px/.9 Arch;font-stretch:62%;display:flex;justify-content:space-between;align-items:baseline;gap:4px 10px;flex-wrap:wrap;padding-bottom:9px;border-bottom:1px solid var(--line);white-space:nowrap}h2 span{color:var(--mid)}
+.list{overflow:auto;scrollbar-width:none;min-height:0}.list::-webkit-scrollbar{display:none}.grow>.list{-webkit-mask:linear-gradient(#000 calc(100% - 28px),transparent);mask:linear-gradient(#000 calc(100% - 28px),transparent);padding-bottom:24px}
+.row{display:grid;grid-template-columns:16px 1fr auto;gap:9px;padding:9px 0;width:100%;align-items:start;border-bottom:1px solid rgba(var(--ink),.07)}
+.row .t{line-height:1.22;overflow-wrap:anywhere;font-weight:520}.row .s{color:var(--mid);white-space:nowrap;padding-top:2px}
+.row .d{grid-column:2/4;color:var(--mid);font-size:13px;line-height:1.35;display:none}.row.open .d{display:block}.one{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.row .d p{padding:5px 0;border-top:1px solid rgba(var(--ink),.07)}.row .d p:first-child{border:0}
+button.row:hover .t{color:var(--sig)}
+.row.m{grid-template-columns:1fr auto}.row.m .t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:450;color:var(--mid);font-size:14px}.row.m:hover .t,.row.m.on .t{color:var(--fg)}
+.note{padding:9px 0;color:var(--low);font-size:13px}
+.dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--low);margin-top:6px}
+.busy .dot{background:var(--sig);border-color:var(--sig);animation:pu 1.1s infinite}@keyframes pu{0%{box-shadow:0 0 0 0 var(--sig)}50%{box-shadow:0 0 0 7px transparent}}
+#areas{display:flex;justify-content:space-between;border-bottom:1px solid rgba(var(--ink),.07)}
+.ar{padding:10px 0 9px;color:var(--mid);position:relative}.ar b{display:block;font:800 22px/1 Arch;font-stretch:62%;color:var(--fg)}.ar span{font:400 9.5px/1.4 Plex,monospace;letter-spacing:.05em;text-transform:uppercase}
+.ar:hover b,.ar.sel b,.ar.sel{color:var(--sig)}.ar.sel:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--sig)}
+.row .n{font:800 22px/.95 Arch;font-stretch:62%;color:var(--sig)}.row.done .t{text-decoration:line-through;color:var(--low)}
+.row[draggable]{cursor:grab}.row.over{border-bottom-color:var(--sig)}
+.tick{width:15px;height:15px;border:1.5px solid var(--low);margin-top:3px}.tick:hover{border-color:var(--sig);background:var(--sig)}.done .tick{background:var(--low)}
+#padd{width:100%;padding:10px 0 10px 25px;border-bottom:1px solid rgba(var(--ink),.07);flex:none}#padd::placeholder{color:var(--low)}
+#dock{position:fixed;left:50%;transform:translateX(-50%);bottom:58px;width:min(720px,calc(100vw - 2*var(--cw) - 150px))}
+#chips{display:flex;justify-content:center;gap:6px 22px;flex-wrap:wrap;margin-bottom:12px;text-shadow:0 0 8px var(--g)}#chips button{color:var(--mid);padding:4px 0}#chips button:hover{color:var(--fg)}#chips b{font-weight:400;color:var(--sig)}
+#bar{display:flex;align-items:center;gap:12px;height:58px;padding:0 16px 0 9px;border:1px solid rgba(var(--ink),.22);background:color-mix(in srgb,var(--g) 86%,transparent);transition:border-color .15s}#bar:focus-within{border-color:var(--mid)}
+#q{flex:1;font:600 21px/1.2 Arch;font-stretch:80%;min-width:0}#q::placeholder{color:var(--low)}
+#mic{width:40px;height:40px;border-radius:50%;flex:none;position:relative;background:rgba(var(--ink),.07)}#mic:after{content:"";position:absolute;inset:13px;border-radius:50%;background:var(--sig);transition:inset .15s}#mic.rec:after{inset:6px;animation:pu 1s infinite}#mic:hover{background:rgba(var(--ink),.14)}
+#bar .sw{color:var(--mid);white-space:nowrap;padding:8px 0 8px 12px;border-left:1px solid var(--line)}#bar .sw:hover{color:var(--fg)}#bar .sw b{font-weight:400;color:var(--sig)}
+#time{position:fixed;left:30px;right:30px;bottom:6px;height:36px;touch-action:none;cursor:ew-resize}#time canvas{width:100%;height:100%}
+#say{position:fixed;left:50%;bottom:176px;transform:translateX(-50%);width:min(780px,calc(100vw - 2*var(--cw) - 120px));text-align:center;pointer-events:none}
+#you{color:var(--mid);margin-bottom:8px;text-shadow:0 0 8px var(--g)}
+#txt{font:700 clamp(20px,2vw,32px)/1.07 Arch;font-stretch:76%;text-wrap:balance;text-shadow:0 0 22px var(--g),0 0 8px var(--g),0 0 3px var(--g);max-height:30vh;overflow:hidden}
+#txt i{font-style:normal;opacity:.14;transition:opacity .18s}#txt i.h{opacity:1}
+#src{margin-top:12px;color:var(--mid);display:flex;gap:6px 20px;justify-content:center;flex-wrap:wrap;pointer-events:auto;text-shadow:0 0 8px var(--g)}#src button:hover{color:var(--sig)}
+#hint{color:var(--mid);opacity:0;transition:opacity .6s;text-shadow:0 0 8px var(--g)}body.on.new:not(.talk):not(.rcp) #hint,body.on.no-head:not(.talk):not(.rcp) #hint{opacity:1}
+body.no-head #gl,body.no-head #ov,body.no-head #lens,body.no-head #time{display:none}@media(min-width:901px){body.no-head #rec{top:25%;left:50%;transform:translateX(-50%)}}
+#rec{position:fixed;width:310px;padding:14px 16px;background:var(--g);pointer-events:none;opacity:0;transition:opacity .15s}#rec.s{opacity:1}#rec.pin{pointer-events:auto}
+#rec h3{font:700 20px/1.1 Arch;font-stretch:76%;margin:4px 0 8px;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}#rec p{color:var(--mid);font-size:13.5px;margin-bottom:8px}#rec .a{color:var(--sig)}
+#rec .act{display:flex;gap:20px;margin-top:8px}#rec .act button{color:var(--sig);font-weight:650;padding:6px 0}
+#sheet{position:fixed;inset:0;z-index:5;display:none;grid-template-columns:minmax(320px,31vw) 1fr minmax(320px,31vw);pointer-events:none}#sheet.s{display:grid}
+.pan{background:var(--g);pointer-events:auto;padding:26px 30px;overflow:auto;scrollbar-width:none}
+body.sheet .col,body.sheet #top,body.sheet #dock,body.sheet #time,body.sheet #say{display:none}
+#sheet h1{font:850 clamp(48px,5vw,80px)/.82 Arch;font-stretch:62%;color:var(--sig);margin:10px 0 22px}
+#sheet textarea{width:100%;height:calc(100vh - 400px);min-height:160px;resize:none;font:450 19px/1.45 Arch;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0}
+#sheet .x{position:absolute;right:30px;top:22px;pointer-events:auto;padding:8px 0;color:var(--mid)}#sheet .x:hover{color:var(--fg)}
+.acts{display:flex;gap:28px;flex-wrap:wrap}.go{font:800 28px Arch;font-stretch:62%;color:var(--sig);padding:12px 0}.go.dim{color:var(--mid)}.go:hover{color:var(--fg)}.go[disabled]{color:var(--low);cursor:default}.fine{color:var(--low);margin-top:10px}
+.big{font:850 clamp(72px,8vw,128px)/.8 Arch;font-stretch:62%;margin:44px 0 22px}
+.f{border-bottom:1px solid var(--line);padding:13px 0}.f b{font:700 22px/1.1 Arch;font-stretch:76%;color:var(--sig)}.f p{color:var(--mid)}.f .k{color:var(--low)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.kv b{font:800 22px/1 Arch;font-stretch:62%;color:var(--sig)}
+.step{display:grid;grid-template-columns:44px 1fr;width:100%;padding:16px 0;border-top:1px solid var(--line);align-items:start}.step i{font:850 44px/.8 Arch;font-stretch:62%;font-style:normal;color:var(--low)}.step b{font:800 30px/.9 Arch;font-stretch:62%;display:block}.step span{color:var(--mid);font-size:14px}
+.step.sel i,.step:hover b{color:var(--sig)}.step.sel b{color:var(--fg)}
+#drop{display:block;width:100%;border:1px solid rgba(var(--ink),.3);padding:34px 20px;text-align:center;margin:18px 0;color:var(--mid);cursor:pointer}#drop.over,#drop:hover{border-color:var(--sig);color:var(--fg)}#drop img{max-height:210px;max-width:100%;display:block;margin:0 auto 12px}
+.fld{width:100%;padding:11px 0;border-bottom:1px solid rgba(var(--ink),.3);font-size:18px;margin-bottom:6px}.lab{color:var(--mid);margin-top:18px;display:block}
+.vrow{display:grid;grid-template-columns:16px 1fr auto;gap:10px;width:100%;padding:12px 0;border-bottom:1px solid var(--line)}.vrow b{font-weight:600;font-size:17px}.vrow.sel .dot{background:var(--sig);border-color:var(--sig)}.vrow:hover b{color:var(--sig)}
+#down{position:fixed;inset:0;z-index:9;background:var(--g);display:none;flex-direction:column;justify-content:center;padding:8vw}#down.s{display:flex}#down h1{font:850 clamp(54px,8vw,130px)/.82 Arch;font-stretch:62%;color:var(--sig);margin-bottom:22px}#down p{font-size:19px;color:var(--mid);max-width:44ch}
+#ing{position:fixed;inset:0;pointer-events:none;display:none;z-index:4}body.ing #ing{display:block}body.ing .col,body.ing #dock,body.ing #time,body.ing #say,body.ing #top{display:none}body.ing0 #ingh,body.ing0 #ingc,body.ing0 #ingl{display:none}#ingh{position:absolute;left:30px;top:44px;font:850 clamp(56px,6.6vw,118px)/.84 Arch;font-stretch:62%}#ingh small{display:block;font:400 12px/1.5 Plex,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--mid);margin-bottom:16px}#ingl{position:absolute;left:30px;bottom:60px;width:34vw;font:400 15px/1.6 Plex,monospace;color:var(--low)}#ingl div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#ingl div:last-child{color:var(--fg)}#ingl i{font-style:normal;color:var(--sig);text-transform:uppercase;letter-spacing:.06em;margin-right:8px}#ingc{position:absolute;right:30px;bottom:54px;text-align:right}#ingc b{display:block;font:850 clamp(120px,15vw,250px)/.78 Arch;font-stretch:62%}#ingc .k{color:var(--mid);display:block;margin-top:10px}#inga{margin-top:14px;font:800 21px/1.25 Arch;font-stretch:66%;color:var(--low)}#inga span.on{color:var(--sig)}#cap{position:fixed;left:30px;bottom:74px;width:var(--cw);font:800 44px/.9 Arch;font-stretch:62%;opacity:0;transition:opacity .2s;pointer-events:none}#cap.s{opacity:1}#cap small{display:block;font:400 12.5px/1.5 Plex,monospace;letter-spacing:.07em;text-transform:uppercase;color:var(--mid);margin-top:12px}
+body.film #hint{visibility:hidden}body.solo .col,body.solo #top,body.solo #dock,body.solo #time{display:none}body.film *{cursor:none!important}
+#sends{max-width:30vw;text-align:right;line-height:1.35}
+@media(max-width:900px){html,body{overflow:auto;height:auto}:root,body{--cw:100%}#gl,#ov{position:absolute;inset:0 0 auto 0;height:70vh}#name{position:absolute;top:34vh}
+#top{position:absolute;left:16px;right:16px;top:12px;flex-wrap:wrap;height:auto;row-gap:6px}#lens{position:static;transform:none;gap:14px}#brand,#bkeys{display:none}#tr{gap:12px}#sends{max-width:none;text-align:left;order:3;flex-basis:100%}#top{align-items:flex-start}
+#say{position:absolute;top:44vh;bottom:auto;width:92vw}#txt{max-height:24vh;font-size:21px}
+.col{position:static;width:auto;margin:0 16px 36px;opacity:1}#L{margin-top:calc(70vh + 10px)}#R{padding-bottom:150px}.sec,.sec.grow{flex:none}.grow>.list{-webkit-mask:none;mask:none;padding-bottom:0}#mem .row:nth-child(n+9){display:none}
+#dock{left:0;right:0;transform:none;width:auto;bottom:36px;background:var(--g);padding:8px 12px 4px;border-top:1px solid var(--line)}#chips{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;white-space:nowrap;scrollbar-width:none;margin-bottom:8px}#bar{height:50px}#q{font-size:18px}#bar .sw:last-child{display:none}
+#time{left:0;right:0;bottom:0;padding:0 16px;background:var(--g)}
+#rec{left:0!important;right:0;top:auto!important;bottom:150px;width:auto;border-top:1px solid var(--line)}
+#sheet.s{display:block;overflow:auto;background:var(--g);pointer-events:auto}#sheet textarea{height:30vh}.big{margin-top:10px}#cap{display:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body class="new">
+<div id="name"></div><canvas id="gl" aria-label="Your twin, drawn from your notes"></canvas><canvas id="ov"></canvas>
+<header id="top" class="fade"><div id="brand"><b>Twin</b> · <span id="ws"></span></div><nav id="lens"></nav><div id="tr"><span id="sends"></span><button id="bsetup">Setup</button><button id="bkeys">Help</button></div></header>
+<section class="col fade" id="L"><div class="sec"><h2>Terminals <span id="tn"></span></h2><div class="list" id="terms"></div></div>
+<div class="sec grow"><h2>Memory <span id="mn"></span></h2><div id="areas"></div><div class="list" id="mem"></div></div></section>
+<section class="col fade" id="R"><div class="sec"><h2>Priorities <span id="pn"></span></h2><div id="pri"></div><input id="padd" placeholder="Add a priority" aria-label="Add a priority"></div>
+<div class="sec grow"><h2>Shipped <span id="sn"></span></h2><div class="list" id="ship"></div></div></section>
+<div id="say" aria-live="polite"><div id="you"></div><div id="txt"></div><div id="src"></div><div id="hint">Every dot is one of your notes. Hover one. Drag to turn.</div></div>
+<div id="dock" class="fade"><div id="chips"></div><div id="bar"><button id="mic" aria-label="Talk" title="Click, or hold Space, to talk"></button><input id="q" autocomplete="off" placeholder="Ask your twin, or hold Space to talk" aria-label="Ask your twin"><button class="sw" id="vox"></button><button class="sw" id="mode"></button></div></div>
+<div id="time" class="fade" title="Drag back in time"><canvas></canvas></div><div id="rec"></div><div id="cap"></div>
+<div id="ing"><div id="ingh"><small>Setup</small>Reading<br>your notes.</div><div id="ingl"></div><div id="ingc"><b>0</b><span class="k"></span><div id="inga"></div></div></div>
+<div id="sheet" role="dialog"><div class="pan" id="sl"></div><div></div><div class="pan" id="out"></div><button class="x k">Close · Esc</button></div>
+<div id="down"><h1>The twin is not running.</h1><p>Run start.sh again. This page reconnects on its own.</p></div>
+<script>
+const T='__TOKEN__',$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const api=(p,b,raw)=>fetch('/api/'+p,{method:b?'POST':'GET',headers:{'X-Twin':T},body:b?(raw?b:JSON.stringify(b)):undefined});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const AN=['Decisions','Taste','Voice','Work','Limits'];
+let S,E=[],idx={},HM={mouth:[0,-.037,.228],mouthW:.05,chin:-.12},mode=localStorage.mode||'recall',vox=localStorage.vox==='1',lens=0,sel=-1,hot=-1,pin=-1,lit=new Map(),cut=1,think=0,thinkT=0,speak=0,glitch=0,hold=0,gate=0,boot=0,spin=0,stepMode=0,forceRight=false,recL=null,ing=null;
+if(localStorage.seen)document.body.classList.remove('new');
+// ---------------------------------------------------------------- gl
+const cv=$('#gl'),gl=cv.getContext('webgl2',{alpha:true,premultipliedAlpha:true,antialias:false,powerPreference:'high-performance',preserveDrawingBuffer:/shot/.test(location.search)});
+if(!gl){document.body.classList.add('no-head','on');$('#hint').textContent='The 3D view is unavailable. You can still read notes, ask questions and check drafts.'}
+const mk=(v,f)=>{if(!gl)return;const p=gl.createProgram();[[gl.VERTEX_SHADER,v],[gl.FRAGMENT_SHADER,f]].forEach(([t,s])=>{const o=gl.createShader(t);gl.shaderSource(o,'#version 300 es\nprecision highp float;'+s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));gl.attachShader(p,o)});gl.linkProgram(p);const u={};for(let i=0;i<gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);i++){const n=gl.getActiveUniform(p,i).name;u[n]=gl.getUniformLocation(p,n)}return{p,u}};
+const VS=`
+layout(location=0)in vec3 aP;layout(location=1)in vec3 aN;layout(location=2)in float aL;layout(location=3)in float aR;layout(location=4)in float aE;
+uniform mat4 uV;uniform vec2 uLook;uniform float uT,uAsp,uDpr,uH,uPre,uThink,uSpeak,uGlitch,uLens,uSel,uBoot,uGate,uScale;uniform sampler2D uS;uniform vec3 uM;uniform float uMW,uCh;
+out vec4 vC;out float vHide;
+float h1(float n){return fract(sin(n*127.1)*43758.5453);}
+void main(){float id=float(gl_VertexID);float r=h1(id),r2=h1(id+.5),r3=h1(id+.25);
+ vec4 st=texelFetch(uS,ivec2(int(aE),0),0);float lit=st.r,pres=st.g,stale=st.b;
+ vec3 p=aP*.5,n=normalize(aN);
+ // breath
+ float chest=1.-smoothstep(-.22,-.04,p.y);p+=n*chest*.004*sin(uT*1.5);
+ // speech: jaw drops, lips part
+ vec3 dm=p-uM;float lat=abs(dm.x)/uMW;float soft=mix(.0007,.05,smoothstep(.85,1.75,lat));float below=smoothstep(soft,-soft,dm.y);float jfr=below*(1.-below)*4.*smoothstep(1.5,.9,lat);
+ float jw=below*smoothstep(-.21,-.13,dm.z)*smoothstep(3.7,2.1,lat)*smoothstep(uCh-.085,uCh-.012,p.y);
+ jw*=mix(1.,smoothstep(1.08,.5,lat),exp(-pow(dm.y/.028,2.)));float ja=-uSpeak*.17*jw;vec2 hq=vec2(p.y-(uM.y+.05),p.z-(uM.z-.17));hq=mat2(cos(ja),-sin(ja),sin(ja),cos(ja))*hq;p.y=hq.x+uM.y+.05;p.z=hq.y+uM.z-.17;
+ p.y+=(1.-below)*exp(-pow(dm.y/.016,2.))*exp(-lat*lat)*uSpeak*.0045;p.x+=sign(dm.x)*exp(-pow(dm.y/.02,2.))*smoothstep(.5,1.,lat)*smoothstep(2.,1.,lat)*uSpeak*-.003;
+ // head turn around the neck
+ float k=smoothstep(-.19,-.03,p.y);float a=uLook.x*k,b=uLook.y*k;vec3 q=p-vec3(0,-.1,-.03);
+ q.xz=mat2(cos(a),sin(a),-sin(a),cos(a))*q.xz;n.xz=mat2(cos(a),sin(a),-sin(a),cos(a))*n.xz;
+ q.yz=mat2(cos(b),sin(b),-sin(b),cos(b))*q.yz;n.yz=mat2(cos(b),sin(b),-sin(b),cos(b))*n.yz;p=q+vec3(0,-.1,-.03);
+ vec3 base=p;
+ // dust: where a dot lives before its source exists
+ float an=r*6.2832+uT*(.05+.08*r2),rad=.52+.5*r2*r2;vec3 dust=vec3(cos(an)*rad,(r3-.5)*(.9)*(r2)+sin(an*2.+r3*6.)*.05,sin(an)*rad);
+ float ghost=step(r3,.10)*(1.-pres);float form=max(pres,ghost)*smoothstep(0.,1.,clamp(uBoot*2.2-r*.7-(.5-p.y)*.55,0.,1.));
+ vec3 arc=normalize(cross(dust-p,vec3(0,1,0)+.001))*sin(form*3.1416)*.16*(r2-.3);
+ p=mix(dust,p,form)+arc;
+ // thinking sweep, gate ring, glitch, lift
+ float sw=exp(-pow((p.y-(mix(-.42,.4,fract(uT*.55))))*26.,2.))*uThink;p+=n*sw*.02;
+ p+=n*lit*(.012+.02*r2*r2)*(.8+.2*sin(uT*4.+r*6.));
+ float band=floor((p.y+uT*.31)*38.);float gg=step(.62,h1(band+floor(uT*18.)))*uGlitch;p.x+=gg*(h1(band*3.+floor(uT*18.))-.5)*.16;
+ if(aR==2.)p+=n*uGlitch*(r-.4)*.07;
+ vec4 e=uV*vec4(p,1.);vec3 ne=normalize(mat3(uV)*n);vec3 vd=normalize(-e.xyz);float f=dot(ne,vd);
+ float F=2.65;gl_Position=vec4(e.x*F/uAsp,e.y*F+uScale,(-e.z-.1)/6.*(-e.z)*2.+e.z,-e.z);
+ if(uPre>.5){gl_Position.z+=.016*(-e.z);gl_PointSize=uH*.0085/(-e.z)*(chest>.5?1.5:1.);vHide=step(.9,form)*(1.-ghost)*step(-.37,aP.y*.5)*(1.-step(.02,lit))*(1.-uGlitch);if(vHide<.5)gl_Position=vec4(9.);return;}
+ // light: key from upper left, cool rim, photo tone carries the face
+ vec3 Ld=normalize(vec3(-.55,.55,.75));float key=max(0.,dot(ne,Ld)),rim=pow(1.-max(f,0.),3.);
+ float tone=uLens>4.5?.74:pow(aL,1.15);float lum=tone*(.40+.74*key*key+.14*key)+rim*.2+.02;
+ float contour=1.-smoothstep(0.,.14,abs(fract(base.y*62.)-.5)-.0);
+ if(uLens>.5&&uLens<1.5){float c=smoothstep(.34,.5,abs(fract(base.y*105.)-.5));lum=c*(.2+.8*key+rim*.6)*(.45+tone)+.012;}
+ vec3 col=vec3(lum);if(uLens>4.5)col=vec3(pow(lum,1.25)*1.12);if(uLens>5.5){float c6=smoothstep(.44,.5,abs(fract(base.y*46.+uT*.15)-.5));col=mix(col,vec3(.94,.31,.13)*1.25,c6*(.10+.9*rim)*.8);}
+ if(uLens>1.5&&uLens<2.5){float v=h1(aE*1.7+3.);lum=lum*.45+.06+v*.5*(.4+.6*key);col=vec3(lum);if(stale>.5)col=vec3(.9,.28,.1)*(.35+.6*key);}
+ if(uLens>3.5&&uLens<4.5){float d=clamp((p.z+.28)/.56,0.,1.);vec3 c1=vec3(.10,.02,.02),c2=vec3(.89,.33,.16),c3=vec3(1.,.93,.82);float tt=clamp(lum*.9+d*.25,0.,1.);col=mix(mix(c1,c2,smoothstep(0.,.5,tt)),c3,smoothstep(.5,1.,tt))*(.25+tt);}
+ col*=mix(1.,.5,stale*step(uLens,1.5));
+ vec3 sig=vec3(.94,.31,.13);col=mix(col,sig*(1.+lum*1.4),clamp(lit,0.,1.));
+ col+=sig*sw*1.1;
+ float ds=(uSel>=0.&&abs(aR-uSel)>.5)?.3:1.;if(uSel>=0.&&abs(aR-uSel)<.5)col=col*1.15+sig*.16*(.4+key);col*=mix(ds,1.,lit);
+ float ring=exp(-pow((length(base.xz)-.2)*14.,2.))*smoothstep(-.02,-.1,base.y)*smoothstep(-.24,-.14,base.y);col=mix(col,sig*1.5,uGate*ring*.9);
+ float bf=smoothstep(-.06,.12,f);float al=mix(.55,bf,form);al*=1.-jfr*min(1.,uSpeak*8.);col*=1.-.6*uSpeak*smoothstep(.012,.0,abs(dm.y+.002))*smoothstep(1.15,.6,lat)*step(.5,form);
+ col=mix(vec3(.5)*(.2+.8*r3),col,form);
+ col*=mix(1.,.28,ghost);al*=smoothstep(-.405,-.30,aP.y*.5+.02*sin(id));float lod=clamp(uH/1800.*1.5/(-e.z)*.52,.2,1.);float dense=smoothstep(.0,.06,aP.z*.5)*smoothstep(-.16,-.08,aP.y*.5)*smoothstep(.24,.2,aP.y*.5);if(r>mix(1.,lod,dense)&&lit<.4)al=0.;vC=vec4(col,al);vHide=1.;
+ float sz=mix(.9+1.4*r2,mix(1.25,1.9,smoothstep(.1,-.2,aP.y*.5)),form)*(1.+lit*.45);if(form<.5&&r>.16)vC.a=0.;
+ gl_PointSize=max(1.4,sz*mix(1.,.74,dense*form)*uH*.00172/(-e.z)*1.5);}`;
+const FS=`in vec4 vC;in float vHide;uniform float uPre;out vec4 o;void main(){vec2 c=gl_PointCoord*2.-1.;float d=dot(c,c);if(d>1.)discard;if(uPre>.5){o=vec4(0,0,0,1);return;}if(vC.a<.01)discard;float a=vC.a*(1.-smoothstep(.45,1.,d));o=vec4(vC.rgb*a,a);}`;
+const QV=`out vec2 v;void main(){v=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(v*2.-1.,0,1);}`;
+const P=mk(VS,FS),B=mk(QV,`in vec2 v;uniform sampler2D t;uniform vec2 d;out vec4 o;void main(){vec3 c=vec3(0);float w=0.;for(int i=-6;i<=6;i++){float g=exp(-float(i*i)/14.);vec3 s=texture(t,v+d*float(i)).rgb;c+=s*g;w+=g;}o=vec4(c/w,1);}`),
+C=mk(QV,`in vec2 v;uniform sampler2D t,b;uniform float uT,uNeg,uG;out vec4 o;float h(vec2 p){return fract(sin(dot(p,vec2(12.9,78.2)))*43758.5);}void main(){vec4 s=texture(t,v);if(uG>.01){s.r=texture(t,v+vec2(.004*uG,0)).r;s.b=texture(t,v-vec2(.004*uG,0)).b;}vec3 c=s.rgb+texture(b,v).rgb*.42;c=c/(1.+max(max(c.r,c.g),c.b)*.22);float a=clamp(s.a,0.,1.);float g=(h(gl_FragCoord.xy+fract(uT)*91.)-.5)*.035*a;c+=g;
+if(uNeg>.5){float l=max(max(c.r,c.g),c.b);float sat=l-min(min(c.r,c.g),c.b);vec3 paper=vec3(.945,.937,.918);vec3 ink=mix(vec3(.027,.031,.039),vec3(.79,.25,.1),smoothstep(.1,.4,sat));vec3 k=mix(paper,ink,clamp(l*1.25,0.,1.));o=vec4(k*a,a);}else o=vec4(c,max(a,min(1.,max(c.r,max(c.g,c.b)))));}`);
+let N=0,vao,fb,W,H,dpr,pos,nrm,reg,ent,stT=gl?.createTexture(),stA=new Uint8Array(1024*4),stF=[];
+const tex=(w,h,f=gl.RGBA8)=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);gl.texStorage2D(gl.TEXTURE_2D,1,f,w,h);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);return t};
+gl?.getExtension('EXT_color_buffer_float');
+function size(){if(!gl)return;dpr=Math.min(2,devicePixelRatio||1);const r=cv.getBoundingClientRect();W=Math.max(2,r.width*dpr|0);H=Math.max(2,r.height*dpr|0);cv.width=W;cv.height=H;const o=$('#ov');o.width=W;o.height=H;
+ if(fb){gl.deleteTexture(fb.t);gl.deleteTexture(fb.a);gl.deleteTexture(fb.b);gl.deleteRenderbuffer(fb.d)}
+ fb={t:tex(W,H,gl.RGBA16F),a:tex(W>>2||1,H>>2||1),b:tex(W>>2||1,H>>2||1),f:gl.createFramebuffer(),fa:gl.createFramebuffer(),fbb:gl.createFramebuffer(),d:gl.createRenderbuffer()};
+ gl.bindFramebuffer(gl.FRAMEBUFFER,fb.f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,fb.t,0);gl.bindRenderbuffer(gl.RENDERBUFFER,fb.d);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,W,H);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,fb.d);
+ [[fb.fa,fb.a],[fb.fbb,fb.b]].forEach(([f,t])=>{gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0)});tl()}
+function assign(){ // every entry owns a patch of you
+ if(!gl)return;
+ const by=[[],[],[],[],[]];E.forEach((e,i)=>by[S.areas.indexOf(e.area)].push(i));const pts=[[],[],[],[],[]];for(let i=0;i<N;i++)pts[reg[i]].push(i);
+ for(let a=0;a<5;a++){const es=by[a],ps=pts[a];if(!es.length){ps.forEach(i=>ent[i]=1023);continue}
+  const seeds=[];const st=Math.max(1,Math.floor(ps.length/4000)),cand=ps.filter((_,i)=>i%st==0),D=new Float32Array(cand.length).fill(9);let c=0;
+  for(let k=0;k<es.length;k++){seeds.push(cand[c]);let m=-1,mi=0;for(let j=0;j<cand.length;j++){const x=pos[cand[j]*3]-pos[cand[c]*3],y=pos[cand[j]*3+1]-pos[cand[c]*3+1],z=pos[cand[j]*3+2]-pos[cand[c]*3+2],d=x*x+y*y+z*z;if(d<D[j])D[j]=d;if(D[j]>m){m=D[j];mi=j}}c=mi}
+  const cell=.04,g=new Map();seeds.forEach((s,k)=>{const key=[0,1,2].map(q=>Math.floor(pos[s*3+q]/cell)).join();(g.get(key)||g.set(key,[]).get(key)).push(k)});
+  for(const i of ps){const X=pos[i*3],Y=pos[i*3+1],Z=pos[i*3+2],cx=Math.floor(X/cell),cy=Math.floor(Y/cell),cz=Math.floor(Z/cell);let bd=9,bk=-1;
+   for(let R=1;R<=2&&bk<0;R++)for(let dx=-R;dx<=R;dx++)for(let dy=-R;dy<=R;dy++)for(let dz=-R;dz<=R;dz++){const l=g.get((cx+dx)+','+(cy+dy)+','+(cz+dz));if(l)for(const k of l){const s=seeds[k]*3,d=(pos[s]-X)**2+(pos[s+1]-Y)**2+(pos[s+2]-Z)**2;if(d<bd){bd=d;bk=k}}}
+   if(bk<0)for(let k=0;k<seeds.length;k++){const s=seeds[k]*3,d=(pos[s]-X)**2+(pos[s+1]-Y)**2+(pos[s+2]-Z)**2;if(d<bd){bd=d;bk=k}}ent[i]=es[bk]}}
+ cent=E.map(()=>[0,0,0,0]);for(let i=0;i<N;i++){const c=cent[ent[i]];if(c&&nrm[i*3+2]>-.5){c[0]+=pos[i*3];c[1]+=pos[i*3+1];c[2]+=pos[i*3+2];c[3]++}}
+ gl.bindBuffer(gl.ARRAY_BUFFER,eb);gl.bufferData(gl.ARRAY_BUFFER,ent,gl.DYNAMIC_DRAW)}
+let eb=gl?.createBuffer(),cent=[];
+async function loadHead(){if(!gl)return;try{HM=await(await fetch('/head.json?'+Date.now())).json()}catch(e){}const buf=await(await fetch('/head.bin?'+Date.now())).arrayBuffer();N=buf.byteLength/12|0;const dv=new DataView(buf);pos=new Float32Array(N*3);nrm=new Float32Array(N*3);reg=new Uint8Array(N);ent=new Float32Array(N);
+ for(let i=0;i<N;i++){for(let k=0;k<3;k++){pos[i*3+k]=dv.getInt16(i*12+k*2,true)/32767*.5;nrm[i*3+k]=dv.getInt8(i*12+6+k)/127}reg[i]=dv.getUint8(i*12+10)}
+ vao=gl.createVertexArray();gl.bindVertexArray(vao);const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,buf,gl.STATIC_DRAW);
+ gl.vertexAttribPointer(0,3,gl.SHORT,true,12,0);gl.vertexAttribPointer(1,3,gl.BYTE,true,12,6);gl.vertexAttribPointer(2,1,gl.UNSIGNED_BYTE,true,12,9);gl.vertexAttribPointer(3,1,gl.UNSIGNED_BYTE,false,12,10);gl.bindBuffer(gl.ARRAY_BUFFER,eb);gl.bufferData(gl.ARRAY_BUFFER,ent,gl.DYNAMIC_DRAW);gl.vertexAttribPointer(4,1,gl.FLOAT,false,4,0);for(let i=0;i<5;i++)gl.enableVertexAttribArray(i)}
+// camera
+let yaw=0,ty=0,pitch=0,tp=0,dist=1.72,td=1.72,look=[0,0],tlook=[0,0],drag=null,moved=0,mx=0,my=0,auto=0;
+const small=()=>innerWidth<=900;
+function view(){const d=dist*(small()?1.12:1),cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);return new Float32Array([cy,sy*sp,-sy*cp,0,0,cp,sp,0,sy,-cy*sp,cy*cp,0,0,-.015,-d,1])}
+const off=()=>small()?0:.1;
+function proj(i,V){const x=pos[i*3],y=pos[i*3+1],z=pos[i*3+2];return projP(x,y,z,V)}
+function projP(x,y,z,V){const ex=V[0]*x+V[4]*y+V[8]*z+V[12],ey=V[1]*x+V[5]*y+V[9]*z+V[13],ez=V[2]*x+V[6]*y+V[10]*z+V[14],w=-ez,F=2.65;return[(ex*F/(W/H)/w*.5+.5)*W/dpr,(.5-(ey*F+off())/w*.5)*H/dpr,w]}
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY,ty,tp];moved=0;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{mx=e.clientX;my=e.clientY;const r=cv.getBoundingClientRect();tlook=[(mx/r.width-.5)*.95,(my/r.height-.42)*.42];if(drag){const dx=mx-drag[0],dy=my-drag[1];moved=Math.max(moved,Math.hypot(dx,dy));ty=drag[2]+dx*.008;tp=Math.max(-.6,Math.min(.6,drag[3]+dy*.004))}else if(pin<0)pick()});
+cv.addEventListener('pointerup',()=>{if(drag&&moved<5){pick();if(hot>=0){pin=hot;receipt()}else{pin=-1;receipt()}}drag=null});cv.addEventListener('pointerleave',()=>{if(pin<0){hot=-1;receipt()}tlook=[0,0]});
+cv.addEventListener('dblclick',()=>{ty=Math.round(ty/6.2832)*6.2832;tp=0;td=1.72});
+cv.addEventListener('wheel',e=>{if(small())return;e.preventDefault();td=Math.max(.75,Math.min(2.6,td*Math.exp(e.deltaY*.001)))},{passive:false});
+function pick(){if(!N||boot<.98)return;const V=view(),top=cv.getBoundingClientRect().top;let bd=90,b=-1,bz=9;for(let i=0;i<40000;i++){const nz=V[2]*nrm[i*3]+V[6]*nrm[i*3+1]+V[10]*nrm[i*3+2];if(nz<.15)continue;const p=proj(i,V),d=(p[0]-mx)**2+(p[1]+top-my)**2;if(d<90&&p[2]<bz-.04||d<bd&&Math.abs(p[2]-bz)<.04){if(stF[ent[i]]&&stF[ent[i]].g<.5)continue;bd=d;b=ent[i];bz=p[2]}}if(b===1023)b=-1;if(b!==hot){hot=b;receipt()}}
+
+
+function turnTo(i){const c=cent[i];if(!c||!c[3])return;const f=Math.atan2(c[0],c[2]);ty=Math.round((ty+f)/6.2832)*6.2832-f;tp=0}
+function receipt(){const i=pin>=0?pin:hot,r=$('#rec');r.classList.toggle('s',i>=0);r.classList.toggle('pin',pin>=0);document.body.classList.toggle('rcp',i>=0);
+ $$('#mem .row').forEach(b=>b.classList.toggle('on',+b.dataset.i===i));
+ if(i<0){recL=null;document.body.classList.remove('rcpR','rcpL');return}
+ if(!localStorage.seen){localStorage.seen=1;document.body.classList.remove('new')}
+ const e=E[i];if(!e)return;
+ r.innerHTML=`<div class="k a">${AN[S.areas.indexOf(e.area)]}</div><h3>${esc(e.title)}</h3>${e.why?`<p>Why: ${esc(e.why)}</p>`:''}${e.stale?`<p class="a">${esc(e.stale)}</p>`:''}<div class="k" style="color:var(--mid)">${esc(e.src)}<br>First seen ${esc(e.since)} · updated ${esc(e.mod)}</div>${pin>=0?`<div class="act"><button data-v="true">Still true</button><button data-v="outdated">Outdated</button><button data-v="">Close</button></div>`:''}`;
+ r.querySelectorAll('[data-v]').forEach(b=>b.onclick=async()=>{if(b.dataset.v)await api('review',{id:e.id,verdict:b.dataset.v});pin=-1;hot=-1;receipt();if(b.dataset.v)refresh(true)})}
+// ---------------------------------------------------------------- loop
+let last=0,tAll=0;const ox=$('#ov').getContext('2d');
+function frame(ms){requestAnimationFrame(frame);if(stepMode)return;const dt=Math.min(.05,(ms-last)/1000||.016);last=ms;tick(dt)}
+function tick(dt){tAll+=dt;if(!S)return;if(!gl){voiceTick(dt);return}if(!N)return;const k=1-Math.exp(-dt*6);if(spin)ty+=dt*spin;
+ boot=Math.min(1,boot+dt/2.6);if(boot>.62)document.body.classList.add('on');
+ yaw+=(ty-yaw)*k;pitch+=(tp-pitch)*k;dist+=(td-dist)*k;const idle=[Math.sin(tAll*.5)*.06,Math.sin(tAll*.73)*.03];for(let i=0;i<2;i++)look[i]+=((gate>.3?0:tlook[i])+idle[i]-look[i])*k*.6;
+ think+=(thinkT-think)*k;glitch*=Math.exp(-dt*1.7);if(hold)glitch=Math.max(glitch,hold*(.45+.55*Math.abs(Math.sin(tAll*5.3))));gate*=Math.exp(-dt*.35);
+ voiceTick(dt);
+ const cd=S._d0+(S._d1-S._d0)*cut;for(let i=0;i<E.length;i++){const f=stF[i]||(stF[i]={r:0,g:1}),on=(i===hot||i===pin)?1:(lit.get(E[i].id)||0),pr=(ing&&ing.rank[i]>=ing.k)?0:(cut>=1||E[i]._t<=cd?1:0);f.r+=(on-f.r)*k*1.4;f.g+=(pr-f.g)*k*.7;stA[i*4]=f.r*255;stA[i*4+1]=f.g*255;stA[i*4+2]=E[i].stale?255:0}stA[1023*4+1]=255;
+ gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,stT);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,1024,1,0,gl.RGBA,gl.UNSIGNED_BYTE,stA);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+ const V=view();gl.bindFramebuffer(gl.FRAMEBUFFER,fb.f);gl.viewport(0,0,W,H);gl.clearColor(0,0,0,0);gl.depthMask(true);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.useProgram(P.p);gl.bindVertexArray(vao);const u=P.u;
+ gl.uniformMatrix4fv(u.uV,false,V);gl.uniform2f(u.uLook,look[0],look[1]);gl.uniform1f(u.uT,tAll);gl.uniform1f(u.uAsp,W/H);gl.uniform1f(u.uH,H);gl.uniform1f(u.uThink,think);gl.uniform1f(u.uSpeak,speak);gl.uniform1f(u.uGlitch,glitch);gl.uniform1f(u.uLens,lens);gl.uniform1f(u.uSel,sel);gl.uniform1f(u.uBoot,boot);gl.uniform1f(u.uGate,gate);gl.uniform1f(u.uScale,off());gl.uniform1i(u.uS,0);gl.uniform3f(u.uM,HM.mouth[0],HM.mouth[1],HM.mouth[2]);gl.uniform1f(u.uMW,HM.mouthW);gl.uniform1f(u.uCh,HM.chin);
+ gl.disable(gl.BLEND);gl.uniform1f(u.uPre,1);gl.drawArrays(gl.POINTS,0,N);gl.depthMask(false);gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);gl.blendEquation(gl.MAX);gl.uniform1f(u.uPre,0);gl.drawArrays(gl.POINTS,0,N);gl.blendEquation(gl.FUNC_ADD);gl.disable(gl.BLEND);gl.disable(gl.DEPTH_TEST);
+ gl.useProgram(B.p);gl.viewport(0,0,W>>2,H>>2);gl.bindFramebuffer(gl.FRAMEBUFFER,fb.fa);gl.bindTexture(gl.TEXTURE_2D,fb.t);gl.uniform2f(B.u.d,4/W,0);gl.drawArrays(gl.TRIANGLES,0,3);gl.bindFramebuffer(gl.FRAMEBUFFER,fb.fbb);gl.bindTexture(gl.TEXTURE_2D,fb.a);gl.uniform2f(B.u.d,0,4/H);gl.drawArrays(gl.TRIANGLES,0,3);
+ gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,W,H);gl.clear(gl.COLOR_BUFFER_BIT);gl.useProgram(C.p);gl.bindTexture(gl.TEXTURE_2D,fb.t);gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,fb.b);gl.activeTexture(gl.TEXTURE0);gl.uniform1i(C.u.t,0);gl.uniform1i(C.u.b,1);gl.uniform1f(C.u.uT,tAll);gl.uniform1f(C.u.uNeg,lens===3?1:0);gl.uniform1f(C.u.uG,glitch);gl.drawArrays(gl.TRIANGLES,0,3);
+ overlay(V)}
+function overlay(V){ox.setTransform(dpr,0,0,dpr,0,0);ox.clearRect(0,0,W,H);if(ing)ingWire(V);const cs=getComputedStyle(document.body),sig=cs.getPropertyValue('--sig'),ink=cs.getPropertyValue('--ink');
+ const i=pin>=0?pin:hot;if(i>=0&&cent[i]&&cent[i][3]){const c=cent[i],p=projP(c[0]/c[3],c[1]/c[3],c[2]/c[3],V),r=$('#rec'),w=innerWidth,left=forceRight||p[0]>w/2,lx=left?w-310-24:24,ly=Math.max(64,Math.min(innerHeight-440,p[1]-40));
+  r.style.left=lx+'px';if(left!==recL){recL=left;document.body.classList.toggle('rcpR',left);document.body.classList.toggle('rcpL',!left)}r.style.top=ly+'px';const ex=left?lx:lx+310;ox.strokeStyle=sig;ox.lineWidth=1.2;ox.beginPath();ox.moveTo(p[0],p[1]);ox.lineTo(ex,ly+10);ox.stroke();ox.fillStyle=sig;ox.beginPath();ox.arc(p[0],p[1],3,0,7);ox.fill()}
+ // terminals orbit the head; working ones feed dots into the chest
+ if(boot>.9){const t=S.terminals;t.forEach((x,j)=>{const a=j/t.length*6.2832+tAll*.09,R=.49,y=-.10+Math.sin(a*2+j)*.02,p=projP(Math.cos(a)*R,y,Math.sin(a)*R,V),busy=x.status==='busy',back=p[2]>dist+.12;x._p=p;ox.globalAlpha=back?.25:1;ox.fillStyle=busy?sig:`rgba(${ink},.75)`;ox.beginPath();ox.arc(p[0],p[1],(busy?5.5:3.6)*dist/p[2],0,7);ox.fill();
+  if(x._h){ox.globalAlpha=1;ox.strokeStyle=sig;ox.lineWidth=1.5;ox.beginPath();ox.arc(p[0],p[1],13,0,7);ox.stroke()}
+  if(busy){const q=projP(0,-.2,.1,V);for(let m=0;m<16;m++){const f=(tAll*.42+m/16)%1,e=f*f*(3-2*f);ox.globalAlpha=(back?.2:.85)*Math.sin(f*3.14);ox.beginPath();ox.arc(p[0]+(q[0]-p[0])*e,p[1]+(q[1]-p[1])*e+Math.sin(f*3.14)*-46,1.5,0,7);ox.fill()}}});
+  ox.globalAlpha=.16;ox.strokeStyle=`rgb(${ink})`;ox.lineWidth=1;ox.beginPath();for(let a=0;a<=64;a++){const p=projP(Math.cos(a/64*6.2832)*.49,-.10,Math.sin(a/64*6.2832)*.49,V);a&&p[2]<dist?ox.lineTo(p[0],p[1]):ox.moveTo(p[0],p[1])}ox.stroke();ox.globalAlpha=1}}
+
+
+// ---------------------------------------------------------------- voice and the spoken line
+let au=null,actx,ana=null,ad,env=null,sp0=0,spDur=1,words=[],toks=[],shown=-1,endAt=0;
+function stopVoice(){if(au){au.pause();au=null}ana=null;env=null}
+function clearSay(){words=[];toks=[];shown=-1;endAt=0;lit.clear();$('#you').textContent='';$('#txt').innerHTML='';$('#src').innerHTML='';document.body.classList.remove('talk')}
+function ingest(sec){if(!gl||!E.length)return;const order=E.map((e,i)=>i).sort((a,b)=>S.areas.indexOf(E[a].area)-S.areas.indexOf(E[b].area)||E[a]._t-E[b]._t),rank=[];order.forEach((i,k)=>rank[i]=k);stF=E.map(()=>({r:0,g:0}));
+ stopVoice();clearSay();pin=hot=-1;receipt();sheet();ty=Math.round(ty/6.2832)*6.2832;tp=0;ing={t0:tAll,dur:sec||Math.min(12,Math.max(5,E.length*.07)),order,rank,k:0,shown:0};document.body.classList.add('ing');document.body.classList.remove('ing0');$('#ingl').innerHTML='';$('#ingc b').textContent='0';$('#ingc .k').textContent='of '+E.length+' notes read';$('#inga').innerHTML=''}
+function emptyHead(){ingest();if(!ing)return;ing.t0=Infinity;document.body.classList.add('ing0')}
+function endIngest(){if(!ing)return;lit.clear();ing=null;document.body.classList.remove('ing','ing0')}
+function ingTick(){if(!ing)return;const u=(tAll-ing.t0)/ing.dur,k=Math.max(0,Math.min(E.length,Math.floor(u*E.length)));ing.k=k;lit.clear();
+ for(let j=Math.max(0,k-5);j<k;j++)lit.set(E[ing.order[j]].id,Math.max(0,1-(k-1-j)/5));
+ if(k!==ing.shown){for(let j=ing.shown;j<k;j++){const e=E[ing.order[j]],d=document.createElement('div');d.innerHTML='<i>'+AN[S.areas.indexOf(e.area)]+'</i>'+esc(e.title);$('#ingl').append(d)}while($('#ingl').children.length>9)$('#ingl').firstChild.remove();ing.shown=k;
+  $('#ingc b').textContent=k;const a=k?S.areas.indexOf(E[ing.order[k-1]].area):-1;$('#inga').innerHTML=AN.map((n,x)=>'<span class="'+(x===a?'on':'')+'">'+n+'</span>').join(' · ')}
+ if(u>=1.15)endIngest()}
+function ingWire(V){if(!ing.k||ing.k>=E.length)return;const c=cent[ing.order[ing.k-1]],el=$('#ingl').lastChild;if(!c||!c[3]||!el)return;const p=projP(c[0]/c[3],c[1]/c[3],c[2]/c[3],V),r=el.getBoundingClientRect(),x=Math.min(r.right,r.left+el.scrollWidth)+10,y=r.top+r.height/2;
+ const sig=getComputedStyle(document.body).getPropertyValue('--sig');ox.strokeStyle=sig;ox.fillStyle=sig;ox.lineWidth=1.2;ox.globalAlpha=.8;ox.beginPath();ox.moveTo(x,y);ox.lineTo(p[0],p[1]);ox.stroke();ox.beginPath();ox.arc(p[0],p[1],3.5,0,7);ox.fill();ox.globalAlpha=1}
+function cloneUI(c,redraw){const el=$('#vc');if(!el)return;el.innerHTML=`<div class="k" style="margin-top:28px;color:var(--mid)">Or clone your own</div><h3 class="go" style="color:var(--fg);padding:6px 0 0">Record one minute</h3><p style="color:var(--mid);margin:8px 0">Read anything out loud for 30 to 60 seconds in a quiet room. Clone sends the recording, chosen name and a consent statement to ElevenLabs using your key.</p><label style="display:flex;gap:10px;align-items:flex-start;margin:12px 0;cursor:pointer"><input type="checkbox" id="vok" style="width:18px;height:18px;accent-color:#E4552A;margin-top:3px;flex:none"><span>This is my own voice, or I have written consent from the person it belongs to.</span></label><div class="acts"><button class="go" id="vrec" disabled>Record</button><button class="go dim" id="vsend" disabled>Clone it</button></div><p class="fine" id="vst"></p>`;
+ let rec,chunks=[],blob,t0,iv;const secs=()=>Math.round((performance.now()-t0)/1000);$('#vok').onchange=e=>{$('#vrec').disabled=!e.target.checked;$('#vsend').disabled=!e.target.checked||!blob};
+ $('#vrec').onclick=async()=>{if(rec){rec.stop();return}try{const st=await navigator.mediaDevices.getUserMedia({audio:true});rec=new MediaRecorder(st);chunks=[];rec.ondataavailable=e=>chunks.push(e.data);
+   rec.onstop=()=>{st.getTracks().forEach(t=>t.stop());clearInterval(iv);const s=secs();blob=s<20?null:new Blob(chunks);rec=null;$('#vrec').textContent='Record again';$('#vst').textContent=s<20?s+' seconds. Record at least 20.':s+' seconds recorded.';$('#vsend').disabled=!blob||!$('#vok').checked};
+   rec.start();t0=performance.now();$('#vrec').textContent='Stop';iv=setInterval(()=>{$('#vst').textContent='Recording. '+secs()+' seconds.';if(secs()>=75&&rec)rec.stop()},500)}catch(e){$('#vst').textContent='The microphone is blocked for this page.'}};
+ $('#vsend').onclick=async()=>{$('#vsend').disabled=true;$('#vst').textContent='Making the voice';let j;try{j=await(await fetch('/api/voice/clone?consent=1&name='+encodeURIComponent(c.name),{method:'POST',headers:{'X-Twin':T},body:blob})).json()}catch(e){j={error:'No answer.'}}
+  if(j.error){$('#vst').textContent=j.error;$('#vsend').disabled=false;return}Object.assign(c,j);vox=true;localStorage.vox=1;await refresh();toggles();redraw();try{await playVoice('This is how your twin will sound.',j.voice_id)}catch(e){}}}
+function voiceTick(dt){ingTick();
+ if(env)speak+=((env[(tAll-sp0)*60|0]||0)-speak)*.42;
+ else if(ana){ana.getByteTimeDomainData(ad);let s=0;for(const v of ad)s+=(v-128)**2;speak+=(Math.min(1,Math.sqrt(s/ad.length)/20)-speak)*.42}
+ else speak*=Math.exp(-dt*9);
+ if(!words.length)return;
+ let p=au?(au.ended?1:au.duration?au.currentTime/au.duration:0):(tAll-sp0)/spDur;
+ if(!au&&!env&&p>0&&p<1)speak=Math.max(speak,.2+.6*Math.abs(Math.sin(tAll*21.7)*Math.sin(tAll*6.1)));
+ const n=p<=0?-1:Math.min(words.length-1,Math.floor(p*words.length));
+ if(n!==shown){shown=n;toks.forEach((e,j)=>e.classList.toggle('h',j<=n))}
+ if(p>=1&&!endAt){endAt=tAll+18;ana=null;env=null;au=null}
+ if(endAt&&tAll>endAt)clearSay()}
+async function present(r,cap){thinkT=0;lit.clear();(r.sources||[]).forEach((id,i)=>lit.set(id,1-i*.15));if(r.gate)gate=1;
+ words=String(r.text||'').split(/\s+/).filter(Boolean);shown=-1;endAt=0;$('#txt').innerHTML=words.map(w=>`<i>${esc(w)} </i>`).join('');toks=[...$('#txt').children];
+ const lv={strong:'Strong evidence',some:'Some evidence','not enough':'No evidence',limit:'Needs your yes',exact:'Counted, not guessed'}[r.level]||'';
+ $('#src').innerHTML=(lv?`<span>${lv}</span>`:'')+(r.by?`<span>${esc(r.by)}</span>`:'')+(r.sources||[]).slice(0,3).filter(id=>idx[id]!=null).map(id=>`<button data-id="${esc(id)}">${esc(E[idx[id]].src)}</button>`).join('');
+ $$('#src button').forEach(b=>b.onclick=()=>{pin=idx[b.dataset.id];turnTo(pin);receipt()});
+ document.body.classList.add('talk');
+ if(cap){env=cap.env;spDur=cap.dur;sp0=tAll;return}
+ if(vox&&S.voice){sp0=tAll;spDur=1e9;try{await playVoice(r.text);return}catch(e){stopVoice();$('#src').insertAdjacentHTML('beforeend','<span style="color:var(--sig)">Voice did not answer</span>')}}
+ sp0=tAll;spDur=Math.max(1,words.length*.07)}
+async function playVoice(text,voice){const x=await api('say',voice?{text,voice_id:voice}:{text});if(!x.ok)throw 0;const a=new Audio(URL.createObjectURL(await x.blob()));actx=actx||new AudioContext();await actx.resume();const s=actx.createMediaElementSource(a);ana=actx.createAnalyser();ana.fftSize=512;ad=new Uint8Array(512);s.connect(ana);ana.connect(actx.destination);au=a;await a.play()}
+async function ask(q){q=(q||'').trim();if(!q)return;stopVoice();clearSay();$('#you').textContent=q;document.body.classList.add('talk');thinkT=1;let r;
+ const tm=/^teach(?: it| me)?[:\s]+(.+)/i.exec(q);
+ try{if(tm){const a=/\b(never|don.?t|ask first|not allowed)\b/i.test(q)?'limits':/\b(look|style|colou?r|like|hate|love|font|film|design)\b/i.test(q)?'taste':/\b(say|word|write|copy|tone)\b/i.test(q)?'voice':'decisions';
+   const j=await(await api('teach',{text:tm[1],area:a})).json();if(!j.id)throw 0;await refresh(true);const i=idx[j.id];if(i!=null){stF[i]={r:0,g:0};turnTo(i)}
+   r={text:'Learned. It is part of me now, with today’s date on it.',sources:[j.id],by:'Saved on this machine'};if(j.conflict)r.text='Learned. It may clash with an older note: '+j.conflict.title+' Mark the old one outdated if this replaces it.'}
+  else{const x=await api('ask',{q,mode});if(!x.ok)throw 0;r=await x.json()}}
+ catch(e){r={text:'I did not get an answer. Check that the twin is still running.',sources:[]}}
+ if(/^(Done:|Added)/.test(r.text))refresh();return present(r)}
+// ---------------------------------------------------------------- panels
+const ago=m=>m<2?'now':m<60?m+'m':m<1440?(m/60|0)+'h':(m/1440|0)+'d';let dead=0,openRepo='';
+function offline(){if(dead++)return;$('#down').classList.add('s');setInterval(async()=>{try{if((await fetch('/')).ok)location.reload()}catch(e){}},2000)}
+async function refresh(full){let r;try{r=await api('state')}catch(e){return offline()}if(!r.ok)return offline();const n=await r.json(),old=S;
+ n.terminals.forEach(t=>{const o=old&&old.terminals.find(x=>x.pid===t.pid);if(o){t._h=o._h;t._o=o._o}});S=n;
+ const entriesChanged=!old||JSON.stringify(n.entries)!==JSON.stringify(old.entries);
+ if(full||entriesChanged){E=n.entries.slice(0,1023).map(e=>({...e}));idx={};E.forEach((e,i)=>{e._t=+new Date(e.since);idx[e.id]=i});stF=[];hot=pin=-1;if(N){assign();receipt()}}
+ S._d0=Math.min(Date.now()-864e5,...E.map(e=>e._t));S._d1=Date.now();draw();tl()}
+function fitName(){const n=$('#name');if(innerWidth<=900){n.style.fontSize='100px';n.style.fontSize=Math.min(innerWidth*.56,(innerWidth-32)/(n.offsetWidth/100))+'px';return}const cw=$('#L').offsetWidth,gap=innerWidth-2*(30+cw+34);n.style.fontSize='100px';n.style.fontSize=Math.max(60,Math.min(gap/(n.offsetWidth/100),innerHeight*.56))+'px'}
+function draw(){const t=S.terminals,b=t.filter(x=>x.status==='busy').length;if($('#name').textContent!==S.name){$('#name').textContent=S.name;fitName()}$('#ws').textContent=S.workspace||'';
+ $('#tn').textContent=t.length?`${b} working · ${t.length-b} waiting on you`:'';
+ $('#terms').innerHTML=(t.map((x,i)=>`<button class="row ${x.status==='busy'?'busy':''} ${x._o?'open':''}" data-i="${i}"><span class="dot"></span><span class="t">${esc(x.title)}</span><span class="s">${x.status==='busy'?'working':ago(x.mins)}</span><span class="d">Last ask: ${esc(x.last||'none on record')}</span></button>`).join('')||(S.sessions_on?'<p class="note">No terminals open in this workspace.</p>':'<p class="note">The session list is off. Turn it on in Setup if you want it.</p>'))+(S.hidden?`<p class="note">${S.hidden} more outside this workspace. Hidden.</p>`:'')+`<p class="note">${(S.clients||[]).length?'Last used by: '+S.clients.map(c=>esc(c.name)+', '+ago(c.mins)+(c.mins>1?' ago':'')).join(' · '):'No coding session has asked the twin yet.'}</p>`;
+ $$('#terms .row').forEach(b=>{const x=t[b.dataset.i];b.onmouseenter=()=>x._h=1;b.onmouseleave=()=>x._h=0;b.onclick=()=>{x._o=!x._o;b.classList.toggle('open')}});
+ pri(S.priorities);const day=S.now.slice(0,10),today=S.shipped.filter(x=>x.at.slice(0,10)===day).length;$('#sn').textContent=`${today} today · ${S.shipped.length} this week`;
+ const by={};S.shipped.forEach(x=>(by[x.repo]=by[x.repo]||[]).push(x));const un=S.repos.filter(r=>r.ahead);
+ $('#ship').innerHTML=un.map(r=>`<div class="row busy"><span class="dot" style="animation:none"></span><span class="t">${esc(r.name)}</span><span class="s" style="color:var(--sig)">${r.ahead} not pushed</span></div>`).join('')+(Object.entries(by).map(([r,v])=>`<button class="row ${openRepo===r?'open':''}" data-r="${esc(r)}"><span class="dot" style="background:var(--low);border-color:transparent"></span><span class="t">${esc(r)}<span class="one" style="font-weight:450;color:var(--mid);font-size:13.5px">${esc(v[0].subject)}</span></span><span class="s">${v.length}</span><span class="d">${v.slice(1,14).map(x=>`<p>${esc(x.subject)} <span class="s">${x.at.slice(5,10)}</span></p>`).join('')}</span></button>`).join('')||(un.length?'':'<p class="note">Nothing on a main branch this week.</p>'));
+ $$('#ship [data-r]').forEach(b=>b.onclick=()=>{openRepo=openRepo===b.dataset.r?'':b.dataset.r;$$('#ship [data-r]').forEach(x=>x.classList.toggle('open',x.dataset.r===openRepo))});
+ $('#mn').textContent=`${E.length} notes`;
+ $('#areas').innerHTML=AN.map((a,i)=>`<button class="ar ${sel===i?'sel':''}" data-a="${i}"><b>${E.filter(e=>e.area===S.areas[i]).length}</b><span>${a}</span></button>`).join('');
+ $$('#areas button').forEach(b=>b.onclick=()=>setSel(sel===+b.dataset.a?-1:+b.dataset.a));
+ const st=E.filter(e=>e.stale).length;
+ $('#chips').innerHTML=[['brief','Brief me'],['needs','What needs me?'],['check','Check a draft'],['audit','Audit my work'],['teach','Teach it']].concat((S.proposals||[]).length?[['prop',`<b>${S.proposals.length}</b> proposed by sessions`]]:[]).concat(st||(S.replaced||[]).length?[['review',st?`Review <b>${st}</b> old notes`:'Replaced notes']]:[]).map(([k,l])=>`<button data-c="${k}">${l}</button>`).join('');
+ $$('#chips button').forEach(b=>b.onclick=()=>({brief:()=>ask('brief me'),needs:()=>ask('which terminals are waiting on me'),check:()=>openCheck(),teach:()=>{$('#q').value='teach: ';$('#q').focus()},review:openReview,audit:openAudit,prop:openProposals})[b.dataset.c]());
+ mem();toggles()}
+function setSel(a){sel=a;document.body.classList.toggle('focus',sel>=0);$$('#areas button').forEach(x=>x.classList.toggle('sel',+x.dataset.a===sel));mem()}
+function mem(){const l=sel<0?[]:E.map((e,i)=>[e,i]).filter(([e])=>e.area===S.areas[sel]).sort((a,b)=>a[0].mod<b[0].mod?1:-1);
+ $('#mem').innerHTML=sel<0?'<p class="note">Pick an area to read its notes.</p>':l.slice(0,60).map(([e,i])=>`<button class="row m" data-i="${i}"><span class="t">${esc(e.title)}</span><span class="s">${e.mod.slice(5)}</span></button>`).join('');
+ $$('#mem .row').forEach(b=>{const i=+b.dataset.i;b.onmouseenter=()=>{if(pin<0){forceRight=true;hot=i;receipt()}};b.onmouseleave=()=>{forceRight=false;if(pin<0){hot=-1;receipt()}};b.onclick=()=>{forceRight=false;pin=i;turnTo(i);receipt()}})}
+function pri(p){const o=p.filter(x=>!x.done);$('#pn').textContent=o.length?`${o.length} open`:'';let n=0;
+ $('#pri').innerHTML=p.map(x=>`<div class="row ${x.done?'done':''}" ${x.done?'':'draggable="true"'} data-id="${x.id}"><span class="n">${x.done?'':++n}</span><span class="t">${esc(x.text)}</span><button class="tick" aria-label="Mark done"></button></div>`).join('');
+ let dg;$$('#pri .row').forEach(r=>{r.querySelector('.tick').onclick=()=>upd({done:+r.dataset.id});r.ondragstart=()=>dg=r;r.ondragover=e=>{e.preventDefault();r.classList.add('over')};r.ondragleave=()=>r.classList.remove('over');r.ondrop=()=>{r.classList.remove('over');if(!dg||dg===r)return;r.before(dg);upd({order:$$('#pri .row:not(.done)').map(x=>+x.dataset.id)})}})}
+async function upd(b){const j=await(await api('priority',b)).json();S.priorities=j.priorities;pri(j.priorities)}
+$('#padd').onkeydown=e=>{if(e.key==='Enter'&&e.target.value.trim()){upd({add:e.target.value.trim()});e.target.value=''}};
+function toggles(){const v=vox&&S.voice;$('#vox').innerHTML=!S.voice?'No voice':v?'Voice <b>on</b>':'Voice off';$('#vox').title=S.voice?'Speak the answers out loud':'Add a voice in Setup';
+ $('#mode').innerHTML=mode==='think'?'Answers: <b>Claude</b>':'Answers: <b>notes only</b>';$('#mode').title='Notes only answers locally. Claude receives the display name, question, matched notes, priorities, repo and shipped lists, and voice profile.';
+ const ve=v&&!S.voice_local;$('#sends').innerHTML='For answers: <b>'+(mode==='think'?'name, question, notes, work lists and profile to Claude'+(ve?', reply to ElevenLabs':''):(ve?'reply text to ElevenLabs':'local'))+'</b>'}
+$('#mode').onclick=()=>{mode=localStorage.mode=mode==='think'?'recall':'think';toggles()};$('#vox').onclick=()=>{if(!S.voice)return openSetup(1);vox=!vox;localStorage.vox=vox?1:0;if(!vox)stopVoice();toggles()};
+const LN=['Portrait','Contour','Memory','Negative','Heat'];$('#lens').innerHTML=LN.map((l,i)=>`<button class="${i?'':'sel'}">${l}</button>`).join('');
+function setLens(i){lens=i;document.body.classList.toggle('neg',i===3);$$('#lens button').forEach((x,j)=>x.classList.toggle('sel',i===j));tl()}$$('#lens button').forEach((b,i)=>b.onclick=()=>setLens(i));
+$('#bsetup').onclick=()=>openSetup(0);$('#bkeys').onclick=()=>openKeys();
+// timeline: drag back to the you of that day
+const tc=$('#time canvas');function tl(){if(!gl||!S)return;const r=tc.getBoundingClientRect(),d=dpr||1;tc.width=r.width*d;tc.height=r.height*d;const c=tc.getContext('2d');c.scale(d,d);const cs=getComputedStyle(document.body),ink=cs.getPropertyValue('--ink'),sig=cs.getPropertyValue('--sig'),n=Math.max(40,r.width/7|0),b=new Array(n).fill(0);E.forEach(e=>b[Math.min(n-1,(e._t-S._d0)/(S._d1-S._d0)*n|0)]++);const m=Math.max(1,...b),w=r.width/n;
+ b.forEach((v,i)=>{const h=v?2+Math.sqrt(v/m)*14:1;c.fillStyle=i/n<=cut?`rgba(${ink},.8)`:`rgba(${ink},.25)`;c.fillRect(i*w,18-h,w-2,h)});const x=Math.min(r.width-2,cut*r.width);c.fillStyle=sig;c.fillRect(x-1,0,2.5,19);c.font='10.5px Plex';const dt=new Date(S._d0+(S._d1-S._d0)*cut),lab=cut>=1?'TODAY · DRAG BACK IN TIME':dt.toISOString().slice(0,10)+' · '+E.filter(e=>e._t<=+dt).length+' NOTES KNOWN',tw=c.measureText(lab).width;c.fillStyle=`rgba(${ink},.62)`;c.fillText(lab,Math.max(0,Math.min(r.width-tw,x-tw/2)),32)}
+let td2=0;const scr=e=>{const r=tc.getBoundingClientRect();cut=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));if(cut>.985)cut=1;tl()};$('#time').onpointerdown=e=>{td2=1;$('#time').setPointerCapture(e.pointerId);scr(e)};$('#time').onpointermove=e=>td2&&scr(e);$('#time').onpointerup=()=>td2=0;
+// ---------------------------------------------------------------- talk
+$('#q').onkeydown=e=>{if(e.key==='Enter'){ask(e.target.value);e.target.value=''}if(e.key==='Escape')e.target.blur()};
+let mr,ch;async function rec(on){if(on&&!S.whisper){clearSay();$('#you').textContent='The microphone needs whisper-cli and a model file. The README says how. Typing works now.';document.body.classList.add('talk');return}if(on&&!mr){try{stopVoice();clearSay();const st=await navigator.mediaDevices.getUserMedia({audio:true});mr=new MediaRecorder(st);ch=[];mr.ondataavailable=e=>ch.push(e.data);
+  mr.onstop=async()=>{st.getTracks().forEach(t=>t.stop());mr=null;$('#mic').classList.remove('rec');$('#you').textContent='Writing down what you said, on this machine';thinkT=1;let j={};try{j=await(await api('listen',new Blob(ch),1)).json()}catch(e){}thinkT=0;j.text?ask(j.text):($('#you').textContent='I did not catch that. Try again, a little longer.')};
+  mr.start();$('#mic').classList.add('rec');$('#you').textContent='Listening. Click again, or let go of Space, when you are done.';document.body.classList.add('talk')}catch(e){mr=null;$('#you').textContent='The microphone is blocked for this page. Allow it in the address bar.';document.body.classList.add('talk')}}else if(!on&&mr&&mr.state==='recording')mr.stop()}
+$('#mic').onclick=()=>rec(!mr);
+addEventListener('keydown',e=>{if(/INPUT|TEXTAREA/.test(e.target.tagName))return;if(e.code==='Space'){e.preventDefault();if(!e.repeat)rec(1)}else if(e.key==='/'){e.preventDefault();$('#q').focus()}else if(e.key==='?'){openKeys()}else if(e.key==='Escape'){endIngest();stopVoice();clearSay();pin=hot=-1;receipt();sheet()}else if(/^[1-5]$/.test(e.key))setLens(e.key-1)});
+addEventListener('keyup',e=>{if(e.code==='Space'&&!/INPUT|TEXTAREA/.test(e.target.tagName))rec(0)});
+// ---------------------------------------------------------------- sheets
+const K=t=>`<div class="k" style="color:var(--mid)">${t}</div>`;
+function sheet(a,b){const on=!!a;if(on){pin=hot=-1;receipt();ty=Math.round(ty/6.2832)*6.2832;tp=0}$('#sheet').classList.toggle('s',on);document.body.classList.toggle('sheet',on);if(on){$('#sl').innerHTML=a;$('#out').innerHTML=b||''}else{hold=0;stopVoice()}}$('#sheet .x').onclick=()=>sheet();
+function showCheck(j){if(j.error){$('#out').innerHTML=`<p style="margin-top:60px">${esc(j.error)}</p>`;return}const bad=j.results.filter(r=>!r.passed);hold=j.passed?0:.6;glitch=j.passed?0:1;
+ $('#out').innerHTML=`<div class="big" style="color:${j.passed?'var(--fg)':'var(--sig)'}">${j.passed?'You.':'Not you.'}</div>`+(bad.map(r=>`<div class="f"><b>${esc([...new Set((r.hits||[]).map(h=>h.match||'').filter(Boolean))].slice(0,6).join(', ')||r.id.replace(/-/g,' '))}</b><p>${esc(r.suggestion||r.message||'')}</p><span class="k">${r.severity==='error'?'Fails':'Warning'}${(r.hits||[]).length?' · line '+[...new Set(r.hits.map(h=>h.line))].join(', '):''}</span></div>`).join('')||'')+`<p class="fine">${j.results.length-bad.length} of ${j.results.length} rules pass</p>`}
+function openCheck(pre){sheet(K('Check a draft')+`<h1>Does it sound like you?</h1><textarea id="dr" placeholder="Paste a draft. Yours or an AI's."></textarea><div class="acts"><button class="go" id="bc">Check it</button><button class="go dim" id="br">Rewrite it as me</button></div><p class="fine">Check runs here against your rules file, up to 60,000 characters. Rewrite accepts up to 6,000 characters and sends the draft, rules and voice profile to Claude, then checks the result. Longer drafts are rejected in full.</p>`);
+ const d=$('#dr');if(pre)d.value=pre;d.focus();
+ $('#bc').onclick=async()=>{if(d.value.trim())showCheck(await(await api('check',{text:d.value})).json())};
+ $('#br').onclick=async()=>{if(!d.value.trim())return;thinkT=1;$('#br').textContent='Rewriting';let j;try{j=await(await api('rewrite',{text:d.value})).json()}catch(e){j={error:'No answer.'}}thinkT=0;$('#br').textContent='Rewrite it as me';if(j.text)d.value=j.text;showCheck(j.check||j)}}
+function openReview(){const l=E.filter(e=>e.stale);sheet(K('Review')+`<h1>Still true?</h1><p style="font-size:18px;color:var(--mid)">These notes say something is unfinished and have not been touched in two weeks. Your answer is kept here. The note files are not changed.</p><div class="big" id="rn">${l.length}</div>`,
+ `<div style="height:40px"></div>`+(l.slice(0,60).map(e=>`<div class="f"><p style="color:var(--fg)">${esc(e.title)}</p><p>${esc(e.stale)}</p><div class="acts"><button class="go" style="font-size:20px" data-i="${esc(e.id)}" data-v="true">Still true</button><button class="go dim" style="font-size:20px" data-i="${esc(e.id)}" data-v="outdated">Outdated</button></div></div>`).join('')||'<p>Nothing to review.</p>')+((S.replaced||[]).length?'<div class="k" style="color:var(--mid);margin:26px 0 4px">Replaced notes</div>':'')+(S.replaced||[]).map(x=>`<div class="f"><p style="color:var(--fg)">${esc(x.title)}</p><p>Replaced on ${esc(x.at.slice(0,10))}. The text is kept.</p><div class="acts"><button class="go dim" style="font-size:20px" data-res="${esc(x.old_id)}" data-by="${esc(x.by_id)}" data-revision="${esc(x.revision)}">Restore</button></div></div>`).join(''));$$('#out [data-res]').forEach(b=>b.onclick=async()=>{const reply=await(await api('restore',{id:b.dataset.res,by_id:b.dataset.by,revision:b.dataset.revision})).json();if(!reply.ok){b.textContent='Could not restore. Refresh and check the source.';return}await refresh(true);openReview()});
+ $$('#out [data-i]').forEach(b=>b.onclick=async()=>{await api('review',{id:b.dataset.i,verdict:b.dataset.v});b.closest('.f').remove();await refresh(true);$('#rn').textContent=E.filter(e=>e.stale).length})}
+async function openAudit(){sheet(K('Audit')+`<h1>Audit my work</h1><p style="font-size:18px;color:var(--mid)">Read only. It runs git read commands and reads tracked text files in the repos you listed. It writes nothing and deletes nothing.</p><div class="big" id="an">…</div><p class="fine" id="ar">Reading</p>`,'<div style="height:40px"></div>');thinkT=1;let j;try{j=await(await api('audit',{})).json()}catch(e){j={findings:[],read:[]}}thinkT=0;if(!$('#an'))return;
+ $('#an').textContent=j.findings.length;$('#ar').textContent='Read: '+(j.read.join(', ')||'nothing listed');const lv={error:'Fix first',warn:'Look at',info:'For later'};
+ $('#out').innerHTML='<div style="height:40px"></div>'+(j.findings.map(f=>`<div class="f"><b style="color:${f.level==='error'?'var(--sig)':'var(--fg)'}">${esc(f.kind)}</b><p>${esc(f.what)}</p><span class="k">${esc(f.where)} · ${lv[f.level]||''}</span></div>`).join('')||'<p>Nothing found.</p>')}
+function openProposals(){const l=S.proposals||[];sheet(K('Proposed')+`<h1>Keep these?</h1><p style="font-size:18px;color:var(--mid)">Found in your repos or noticed by your coding sessions. Nothing is part of the twin until you accept it.</p><div class="big" id="pc">${l.length}</div>`,
+ '<div style="height:40px"></div>'+(l.map(p=>`<div class="f" data-revision="${esc(p.revision)}"><p style="color:var(--fg);font-size:18px">${esc(p.text)}</p><span class="k">${esc(AN[S.areas.indexOf(p.area)]||p.area)} · ${esc(p.scope||'personal')} · from ${esc(p.source)} · ${esc(p.created.slice(0,10))}</span>${p.conflict?`<p class="a" style="color:var(--sig);margin-top:8px">Possible match in ${esc(p.conflict.scope||'personal')}: ${esc(p.conflict.title)}</p>`:''}<div class="acts">${p.conflict?`<button class="go" style="font-size:20px" data-p="${p.id}" data-u="${esc(p.uid)}" data-o="${esc(p.conflict.id)}" data-old-revision="${esc(p.conflict.revision)}" data-a="1" data-r="1">Replace the old one</button><button class="go dim" style="font-size:20px" data-p="${p.id}" data-u="${esc(p.uid)}" data-a="1">Keep both</button>`:`<button class="go" style="font-size:20px" data-p="${p.id}" data-u="${esc(p.uid)}" data-a="1">Accept</button>`}<button class="go dim" style="font-size:20px" data-p="${p.id}" data-u="${esc(p.uid)}" data-a="">Drop</button></div></div>`).join('')||'<p>Nothing waiting.</p>'));
+ $$('#out [data-p]').forEach(b=>b.onclick=async()=>{const jr=await(await api('proposal',{id:+b.dataset.p,uid:b.dataset.u,revision:b.closest('.f').dataset.revision,old_id:b.dataset.o||null,old_revision:b.dataset.oldRevision||null,accept:!!b.dataset.a,replace:!!b.dataset.r})).json();if(jr.error){await refresh(true);return openProposals()}b.closest('.f').remove();await refresh(true);$('#pc').textContent=(S.proposals||[]).length})}
+function openKeys(){sheet(K('Help')+`<h1>What this is</h1><p style="font-size:18px;color:var(--mid)">A twin of you that lives on your Mac. The head is your memory: every dot belongs to one note about how you decide, what you like, how you write, your work and your limits. The sides show your work right now. Ask it, hand it a draft, correct it. It keeps what you teach it.</p>`,
+ `<div style="height:40px"></div>`+[['Hover','A dot shows its note, why, and when'],['Click','Keeps it open. Mark it still true or outdated'],['Drag','Turn the head. Scroll to zoom. Double click to reset'],['Space','Hold to talk. Let go to send'],['/','Type a question'],['1 to 5','Portrait, Contour, Memory, Negative, Heat'],['Timeline','A date filter: drag back and notes first seen after that day drop away'],['teach: …','Type it to add a note. It lands on the head'],['add …','Adds a priority. "done with 2" ticks it'],['Esc','Close, stop talking']].map(([a,b])=>`<div class="kv"><b>${a}</b><span>${b}</span></div>`).join(''))}
+// setup: face, voice, notes
+let stepN=0,poll=0;
+async function openSetup(n){stepN=n||0;const c=await(await api('config',{})).json();const draw=()=>{sheet(K('Setup')+`<h1>Make it yours</h1>`+[['Face',c.head?`${c.head.toLocaleString()} dots, built from a photo`:'No head yet'],['Voice',c.voice_name||(c.has_voice_key?'Not chosen':'No ElevenLabs key')],['Notes',`${c.notes} notes · ${c.name}`]].map(([a,b],i)=>`<button class="step ${i===stepN?'sel':''}" data-s="${i}"><i>${i+1}</i><div><b>${a}</b><span>${esc(b)}</span></div></button>`).join('')+`<p class="fine">Choose which sources to read and which services to use.</p>`);
+  $$('.step').forEach(b=>b.onclick=()=>{stepN=+b.dataset.s;draw()});[face,voice,notes][stepN]()};
+ const face=()=>{$('#out').innerHTML=`<div style="height:34px"></div>`+K('Step 1')+`<h3 class="go" style="color:var(--fg);padding:0">One photo becomes the head</h3><label id="drop"><input type="file" accept="image/*" hidden id="pf"><span id="dl">Drop a photo here, or click to choose</span></label><p style="color:var(--mid)">Front-facing, even light, head and shoulders. Use your own face, or one you have written consent for.</p><p style="color:var(--mid);margin-top:10px">Choosing a photo checks a temporary copy here. Missing model files may download from GitHub. Build sends the cut-out to fal on your account and keeps build files here.</p><label style="display:flex;gap:10px;align-items:flex-start;margin:14px 0 4px;cursor:pointer"><input type="checkbox" id="pok" style="width:18px;height:18px;accent-color:#E4552A;margin-top:3px;flex:none"><span>This is a photo of me, or I have written consent from the person in it.</span></label><div class="acts"><button class="go" id="bb" disabled>Build my head</button></div><p class="fine" id="ps">${c.has_fal?'':'Needs FAL_KEY in the shell that starts the twin.'}</p>`;
+  const coach=async f=>{$('#ps').textContent='Checking the photo';let j;try{j=await(await api('setup/check',f,1)).json()}catch(e){j={issues:['The photo check could not be reached.'],good:[]}}if(!$('#ps'))return;$('#ps').innerHTML=(j.issues||[]).length?'<span style="color:var(--sig)">Fix first: '+j.issues.map(esc).join(' · ')+'</span>':esc((j.good||['Good photo.']).join(' · '));$('#bb').textContent=(j.issues||[]).length?'Build anyway':'Build my head'};let file;const pick=f=>{if(!f||!/^image\//.test(f.type))return;file=f;$('#dl').innerHTML=`<img src="${URL.createObjectURL(f)}" alt="">${esc(f.name)}`;$('#bb').disabled=!c.has_fal;coach(f)};$('#pf').onchange=e=>pick(e.target.files[0]);const d=$('#drop');d.ondragover=e=>{e.preventDefault();d.classList.add('over')};d.ondragleave=()=>d.classList.remove('over');d.ondrop=e=>{e.preventDefault();d.classList.remove('over');pick(e.dataTransfer.files[0])};
+  $('#bb').onclick=async()=>{
+   const button=$('#bb'),status=$('#ps');
+   if(!$('#pok').checked){status.textContent='Tick the box first.';return}
+   const stop=message=>{clearInterval(poll);thinkT=0;button.disabled=false;status.textContent=message};
+   const result=async(route,body,raw)=>{
+    const response=await api(route,body,raw),j=await response.json();
+    if(!response.ok||j.error||!j.status)throw new Error(j.status||(typeof j.error==='string'&&j.error)||'The build did not return a status.');
+    return j};
+   button.disabled=true;thinkT=1;clearInterval(poll);
+   try{const j=await result('setup/photo?consent=1',file,1);status.textContent=j.status}
+   catch(e){stop('Could not confirm the build. '+e.message);return}
+   let checking=false;
+   poll=setInterval(async()=>{
+    if(checking)return;checking=true;
+    try{const j=await result('setup/status',{});status.textContent=j.status;
+     if(j.done){clearInterval(poll);thinkT=0;sheet();await loadHead();assign();stF=[];boot=0}}
+    catch(e){stop('Could not read the build result. '+e.message)}
+    finally{checking=false}
+   },2500)
+  }};
+ const voice=async()=>{$('#out').innerHTML=`<div style="height:34px"></div>`+K('Step 2')+`<h3 class="go" style="color:var(--fg);padding:0">Give it your voice</h3><p style="color:var(--mid);margin-bottom:14px">Click a voice to hear it. The system voice is free and stays on this machine. With a key, opening this list requests your account voices from ElevenLabs. A preview sends sample text. Speaking sends reply text unless it is already cached. Use your own voice, or one you have written consent for.</p><div id="vl">${c.has_voice_key?'Loading voices':'Set ELEVENLABS_API_KEY in the shell that starts the twin, then reload.'}</div><div id="vc"></div>`;if(!c.has_voice_key)return;
+  if(c.can_clone)cloneUI(c,voice);else $('#vc').textContent='To clone a voice, set ELEVENLABS_API_KEY in the shell that starts the twin.';
+  const j=await(await api('voices',{})).json(),l=[{voice_id:'',name:'No voice',category:'text only'}].concat(j.voices||[]);$('#vl').innerHTML=l.map(v=>`<button class="vrow ${v.voice_id===(c.voice_id||'')?'sel':''}" data-v="${esc(v.voice_id)}"><span class="dot"></span><b>${esc(v.name)}</b><span class="s">${esc(v.category)}</span></button>`).join('')||'No voices found on that account.';
+  $$('.vrow').forEach(b=>b.onclick=async()=>{const id=b.dataset.v,r=await(await api('config',{voice_id:id})).json();Object.assign(c,r);$$('.vrow').forEach(x=>x.classList.toggle('sel',x===b));await refresh();if(id){vox=true;localStorage.vox=1;toggles();stopVoice();try{await playVoice('This is how your twin will sound.',id)}catch(e){}}})};
+ const notes=()=>{$('#out').innerHTML=`<div style="height:34px"></div>`+K('Step 3')+`<h3 class="go" style="color:var(--fg);padding:0">Point it at your notes</h3><label class="lab k">Name on the wall</label><input class="fld" id="fn" maxlength="14" value="${esc(c.name)}"><label class="lab k">Folder of notes</label><input class="fld" id="fm" value="${esc(c.memory)}"><label class="lab k">Git repos it may read, one per line</label><textarea class="fld" id="fr" style="height:84px;min-height:0;border-top:0;padding:11px 0;font-size:16px" placeholder="~/code/my-project">${esc(c.repos||'')}</textarea><p style="color:var(--mid);margin-top:8px">A folder of Markdown files, one note per file. Claude Code memory folders work as they are. The twin reads them. It never edits them.</p><label class="lab k">Voice rules file</label><input class="fld" id="fu" value="${esc(c.rules||'')}"><p style="color:var(--mid);margin-top:6px">${c.rules_example?'These are the example rules, not yours. Build your own with the voice tools in this repo, then put the path here.':'Drafts are checked against this file.'}</p><label class="lab k">Voice profile file</label><input class="fld" id="fp" value="${esc(c.persona||'')}"><p style="color:var(--mid);margin-top:6px">${c.persona_example?'This is the example profile, not yours. Claude answers and Rewrite use this profile until you change it.':'Sent when you choose a Claude answer or Rewrite.'}</p><label style="display:flex;gap:10px;align-items:flex-start;margin:14px 0 4px;cursor:pointer"><input type="checkbox" id="fs" ${c.read_sessions?'checked':''} style="width:18px;height:18px;accent-color:#E4552A;margin-top:3px;flex:none"><span>Also list my Claude Code sessions. This reads session records and transcript tails, including the last prompt, working folder, status and timing.</span></label><div class="acts"><button class="go" id="bs">Save and read them in</button><button class="go dim" id="bl">Learn from my repos</button></div><p class="fine" id="ns">${esc(c.will_read||'')}</p>`;
+  $('#bl').onclick=async()=>{$('#ns').textContent='Reading the instruction files of the repos you listed';let j;try{j=await(await api('scan',{})).json()}catch(e){j={read:[],proposed:0}}await refresh();if(j.proposed)return openProposals();$('#ns').textContent=j.read.length?'Read '+j.read.join(', ')+'. Nothing new to propose.':'No instruction files found in the repos you listed.'};
+  $('#bs').onclick=async()=>{const r=await(await api('config',{name:$('#fn').value,memory:$('#fm').value,rules:$('#fu').value,persona:$('#fp').value,read_sessions:$('#fs').checked,repos:$('#fr').value})).json();if(r.error){$('#ns').textContent=r.error;return}Object.assign(c,r);await refresh(true);$('#ns').textContent=`Saved. ${r.notes} notes load from this folder.`;ingest();$$('.step span')[2].textContent=`${r.notes} notes · ${r.name}`}};
+ draw()}
+// ---------------------------------------------------------------- start, and frame stepping for capture
+function anim(dt){for(const a of document.getAnimations()){if(a._c==null){a.pause();a._c=0}a._c+=dt*1000;try{a.currentTime=a._c}catch(e){}}}
+addEventListener('resize',()=>{size();fitName()});
+(async()=>{await Promise.all([loadHead(),refresh()]);assign();size();fitName();document.fonts.ready.then(fitName);requestAnimationFrame(frame);setInterval(()=>document.hidden||stepMode||refresh(),6000);if(gl&&!localStorage.ingested&&!/shot/.test(location.search)){localStorage.ingested=1;setTimeout(()=>ingest(),3000)}
+ window.__twin={ingest,emptyHead,endIngest,startIngest:s=>{if(!ing)return;ing.t0=tAll;ing.dur=s;document.body.classList.remove('ing0')},openAudit,openProposals,ask,present,clearSay,openCheck,openReview,openSetup,openKeys,sheet,setSel,setLens,refresh,tl:()=>tl(),idx:id=>idx[id],
+  step(dt){stepMode=1;tick(dt);anim(dt)},reloadHead:async()=>{await loadHead();assign();stF=[];boot=0},landed(id){const i=idx[id];if(i!=null){stF[i]={r:0,g:0};turnTo(i)}},cap(h){const c=$('#cap');c.classList.toggle('s',!!h);if(h)c.innerHTML=h},
+  get:()=>({boot,speak,words:words.length,shown,playing:!!au,hot,pin,N,E:E.length,think,glitch,you:$('#you').textContent,txt:$('#txt').textContent}),
+  set(o){if('lens'in o)setLens(o.lens);if('yaw'in o)ty=yaw=o.yaw;if('ty'in o)ty=o.ty;if('tp'in o)tp=o.tp;if('spin'in o)spin=o.spin;if('cut'in o){cut=o.cut;tl()}if('td'in o)td=o.td;if('dist'in o)td=dist=o.dist;if('glitch'in o)glitch=o.glitch;if('thinkT'in o)thinkT=o.thinkT;if('speak'in o)speak=o.speak;
+   if('hot'in o){hot=o.hot==null?-1:idx[o.hot];receipt()}if('pin'in o){pin=o.pin==null?-1:idx[o.pin];if(pin>=0)turnTo(pin);receipt()}if('film'in o)document.body.classList.toggle('film',!!o.film);if('boot'in o)boot=o.boot;if('look'in o)tlook=o.look}}})();
+</script></body></html>

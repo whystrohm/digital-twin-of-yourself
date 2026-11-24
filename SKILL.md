@@ -27,6 +27,12 @@ Three depth levels depending on available data:
 - **Layer 2**: Conversation memory (Claude with memory enabled)
 - **Layer 3**: File system scan (Claude Code or Cowork), measured by the scripts
 
+## The twin app
+
+This repo also ships a twin you can see and ask. If the user has the repo cloned and asks to run, open or set up their twin, tell them to run `python3 twin/twin.py` from the repo folder. It opens a local page with a demo head and sample notes. A photo can replace the head through an optional paid build. It answers from selected notes, checks drafts with a rules file and advises on recognized limits. It cannot stop other tools from acting. Setup, the MCP server for coding sessions, and what leaves the machine are in `docs/TWIN.md`.
+
+The checker uses `twin.rules.json`. Claude answers and rewrites also use the `twin.md` voice profile. Select both files in Setup under Notes, or set `rules` and `persona` in `~/.twin/config.json`. The bundled examples stay active until changed. Notes and Teach do not change either file.
+
 ## Consent
 
 Only build a Twin of the user's own writing, or of another person who has
@@ -55,10 +61,12 @@ ELSE:
 ## Layer 3: Measured File Scan (Claude Code / Cowork)
 
 ### What to scan (in priority order)
-1. **Sent emails / Slack exports**: highest signal for natural voice
+Use only material the user has permission to use. Company writing needs approval for this purpose. Remove other people's words and identifying or confidential details before either the scripts or a model reads it. Another author's writing needs that person's written consent.
+
+1. **The user's own sent emails or messages**, scrubbed of other people's names and details: highest signal for natural voice
 2. **Proposals and pitch docs**: decision logic and framing patterns
 3. **CLAUDE.md / README files**: how they brief others
-4. **Client communications**: tone shifts across contexts
+4. **The user's own side of client conversations**, scrubbed. Never a client's or a coworker's words
 5. **Social posts / blog drafts**: public voice vs. private voice
 6. **Meeting notes / journal entries**: unfiltered thinking
 
@@ -255,7 +263,7 @@ on-voice before calibrating against them.
 Respond to this scenario AS THE USER:
 
 > "A high-value client just offered you $50,000 for a project that's
-> pure manual labor: no systems, no templates, no automation. It's
+> pure manual labor: no systems, no templates, nothing set up to repeat. It's
 > prestigious but breaks every rule in your Decision Logic. What do
 > you say to the client?"
 
