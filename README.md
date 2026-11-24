@@ -1,5 +1,7 @@
 # Digital Twin of Yourself
 
+**English** · [简体中文](README.zh-CN.md)
+
 **A digital twin that knows your work.**
 
 Your decisions, voice rules and limits, available to your coding sessions. It runs on your machine. Selected notes load when you save their folder. Sessions can propose new notes, and you review those before they enter recall.
@@ -15,6 +17,19 @@ Built for people who already work with coding agents and are tired of correcting
 ![The page: the head with one note open, showing the note, the reason and the date](assets/twin.png)
 
 *The demo twin you get on first run. Maya is made up: a generated face and made-up notes.*
+
+## Build your own clone
+
+The demo is a made-up person. The point is to make yours and see what comes out.
+
+- **Your face.** Drop one photo. You get a 3D head made of dots that you can turn all the way round.
+- **Your voice.** Record a minute and clone it on your own ElevenLabs account. The twin reads your own decisions back to you in your own voice. It is a little eerie the first time. It is also the fastest way to hear whether a line sounds like you.
+- **Your thinking.** Every dot is one note: a decision, a taste, a voice rule or a limit, with its reason and its date. Hover the head and you are looking at how you work, written down.
+- **Your code.** List your repos and it reads their instruction files and proposes the rules it finds. You see what your coding tools have been told about you, and what they have not.
+
+Your own writing is the strongest source there is. Nobody else's examples tell a model how you sound. The [voice tools](docs/VOICE-TOOLS.md) in this repo measure how you write and turn it into rules a checker can run, so drafts, posts and marketing copy come back in your language and not a generic one.
+
+Play with it. Ask it what you decided last month. Paste in a draft and watch it fail. Change your mind and watch the old note get replaced. Use your own face and voice, or ones you have written consent for.
 
 ## Why
 
