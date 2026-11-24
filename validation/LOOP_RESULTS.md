@@ -1,4 +1,8 @@
-# The learning loop, one real run
+# Historical learning-loop result
+
+This transcript predates the final audit fixes. It entered Git at `70a385f14f2a357f562afb54ddd8c85627776fb8`.
+
+The current harness checks exact note state, source fields and successful tool calls. It has not had a paid rerun. The result below belongs to the earlier harness. Its transcript body is unchanged.
 
 Every answer below is the real output of `validation/twin_loop.py`: fresh `claude` sessions on a throwaway twin with the made-up sample notes. One run. A model's wording varies from run to run.
 

@@ -2,6 +2,8 @@
 import json, os, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 class ValidationSafetyTests(unittest.TestCase):
     @staticmethod
     def load_validation(name):
@@ -42,6 +44,17 @@ class ValidationSafetyTests(unittest.TestCase):
         self.assertFalse(module.answer_matches({"colour": "not green, use black", "note": note["title"], "source": "owner correction"}, "dark green", note))
         self.assertFalse(module.answer_matches({"colour": "dark green", "note": "Shipping labels are printed in black only.", "source": "owner correction"}, "dark green", note))
         self.assertFalse(module.answer_matches({"colour": "dark green", "note": note["title"], "source": "made up"}, "dark green", note))
+
+    def test_proof_tool_use_requires_a_success_from_the_caller_whose_count_changed(self):
+        module, _ = self.load_validation("twin_loop")
+        before = {"clients": [{"name": "reader", "calls": 5, "last_tool": "twin_recall", "last_result": "ok"},
+                              {"name": "other", "calls": 1, "last_tool": "twin_allowed", "last_result": "ok"}]}
+        unrelated = {"clients": [dict(before["clients"][0]), dict(before["clients"][1], calls=2)]}
+        self.assertFalse(module.LoopProof.used_tool(before, unrelated, "twin_recall"))
+        failed = {"clients": [dict(before["clients"][0], calls=6, last_result="error")]}
+        self.assertFalse(module.LoopProof.used_tool(before, failed, "twin_recall"))
+        successful = {"clients": [dict(before["clients"][0], calls=6)]}
+        self.assertTrue(module.LoopProof.used_tool(before, successful, "twin_recall"))
 
     def test_the_proof_checks_real_owner_state_with_an_offline_client(self):
         import contextlib, io
@@ -111,6 +124,7 @@ class ValidationSafetyTests(unittest.TestCase):
             self.assertEqual(result["summary"]["errors"], 1)
             self.assertFalse(result["complete"])
             self.assertNotEqual(code, 0)
+
 
 _fixtures = tempfile.TemporaryDirectory(prefix="twin-test-")
 _previous_store = os.environ.get("TWIN_HOME")
@@ -349,6 +363,7 @@ class TwinPersistence(unittest.TestCase):
         self.app.sync_cfg(); self.app.IX.sig = None
         self.assertIn("The packing line opens at nine.", [e["title"] for e in self.app.IX.get().e])
 
+
 class TwinApp(unittest.TestCase):
     @unittest.skipUnless(
         os.path.isfile(os.path.join(os.environ.get("TWIN_SITE_TEST_ROOT", os.path.join(os.path.dirname(ROOT), "whystrohm-twin")), "src", "app", "twin", "page.tsx")),
@@ -388,6 +403,7 @@ class TwinApp(unittest.TestCase):
         for explanation in ("transcript", "self-attestation", "source files", "imported notes", "summary", "model cache"):
             with self.subTest(explanation=explanation):
                 self.assertIn(explanation, page.lower())
+        self.assertTrue(re.search(r"macOS or Linux[^\n]*Python 3\.9 or newer", page), "State the supported host platforms beside the Python prerequisite.")
         self.assertRegex(page, r"<LazyFilm\b[\s\S]*?\bcontrols\b[\s\S]*?/>")
         self.assertRegex(page, r'<main\b[^>]*\bid="main"[^>]*\bdata-nx=')
         self.assertRegex(sources["src/lib/nav.ts"], r'href:\s*"/twin"')
@@ -1080,9 +1096,10 @@ class PrivacyDocs(unittest.TestCase):
     def test_public_docs_meet_copy_rules(self):
         import re
         banned = re.compile(r"\b(?:delve|transformative|robust|game-changing|revolutionize|unlock|elevate|seamless|leverage|automat\w*)\b|\u2014|[\U0001F300-\U0001FAFF]", re.I)
-        for name in ("README.md", "docs/TWIN.md", "SKILL.md", "SAFETY_CHECKLIST.md", "CHANGELOG.md"):
+        for name in ("README.md", "docs/TWIN.md", "SKILL.md", "SAFETY_CHECKLIST.md", "CHANGELOG.md", "validation/EVAL.md"):
             with self.subTest(document=name):
                 self.assertIsNone(banned.search(self.read_doc(name)))
+
 
 if __name__ == "__main__":
     unittest.main()

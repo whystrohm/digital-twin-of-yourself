@@ -83,15 +83,15 @@ class LoopProof:
             raise RuntimeError("The owner action did not return valid JSON.")
 
     def snapshot(self):
-        return self.owner("result={'active':[{k:e[k] for k in ('id','title','src')} for e in twin.IX.get().e "
+        return self.owner("result={'active':[dict({k:e[k] for k in ('id','title','src')},revision=twin.entry_revision(e)) for e in twin.IX.get().e "
                           "if 'shipping labels' in e['title'].lower()], 'proposals':twin.proposals(), "
                           "'clients':twin.clients()}")
 
     @staticmethod
     def used_tool(before, after, tool):
-        prior = sum(c["calls"] for c in before["clients"])
-        return (sum(c["calls"] for c in after["clients"]) > prior
-                and any(c["last_tool"] == tool for c in after["clients"]))
+        prior = {c["name"]: c["calls"] for c in before["clients"]}
+        return any(c["last_tool"] == tool and c.get("last_result") == "ok"
+                   and c["calls"] > prior.get(c["name"], 0) for c in after["clients"])
 
     def step(self, title, data, passed):
         self.log.append((title, data, bool(passed)))
@@ -113,8 +113,9 @@ class LoopProof:
         return pending[0]
 
     def accept(self, proposal, old=None):
-        code = "result=twin.settle(%r,True,%r,%r,%r)" % (
-            proposal["id"], bool(old), proposal["uid"], old["id"] if old else None)
+        code = "result=twin.settle(%r,True,%r,%r,%r,%r,%r)" % (
+            proposal["id"], bool(old), proposal["uid"], old["id"] if old else None,
+            proposal["revision"], old["revision"] if old else None)
         result = self.owner(code)
         state = self.snapshot()
         active = state["active"]
