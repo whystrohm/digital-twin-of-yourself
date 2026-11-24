@@ -1409,11 +1409,28 @@ def audit():
 # ------------------------------------------------------------------ setup
 
 HEAD = os.path.join(STORE, "head"); BUILD = {"proc": None}; BUILD_LOCK = threading.Lock()
+HEAD_FILES = ("head.bin", "head.json")
 
 
-def head_file(name):
-    p = os.path.join(STORE, name)
-    return p if os.path.exists(p) else os.path.join(HERE, name)
+def _head_status_text():
+    try: return read_note(os.path.join(HEAD, "status.txt"), HEAD).strip()
+    except FileNotFoundError: return "Starting"
+    except (OSError, ValueError): return "ERROR The head status could not be read from the data folder."
+
+
+def _head_pair(folder):
+    try:
+        for name in HEAD_FILES: confined_stat(os.path.join(folder, name), folder)
+    except (OSError, ValueError): return False
+    return True
+
+
+def read_head(name):
+    with BUILD_LOCK:
+        folder = HEAD if _head_status_text() == "PUBLISHING" else STORE
+        if not _head_pair(folder): folder = HERE
+        with _regular_file(os.path.join(folder, name), folder) as fd:
+            with os.fdopen(os.dup(fd), "rb") as data: return data.read()
 
 
 def voices():
@@ -1530,7 +1547,7 @@ def config(d):
     except (OSError, ValueError, re.error, subprocess.SubprocessError) as e:
         return {"error": str(e) if isinstance(e, ValueError) else "The settings could not be saved. Try again."}
     try:
-        with open(head_file("head.json")) as f: pts = json.load(f)["points"]
+        pts = json.loads(read_head("head.json"))["points"]
     except Exception: pts = 0
     return {"name": CFG["name"], "memory": CFG["memory"].replace(HOME, "~"), "notes": len(IX.get().e), "repos": "\n".join(r.replace(HOME, "~") for r in CFG["repos"]), "voice_id": CFG.get("voice_id", ""), "voice_name": CFG.get("voice_name", ""),
             "has_voice_key": bool(os.environ.get("ELEVENLABS_API_KEY")) or bool(sys_voice()), "can_clone": bool(os.environ.get("ELEVENLABS_API_KEY")), "will_read": will_read(),
@@ -1543,9 +1560,15 @@ def build_head(raw):
 
 
 def _build_head(raw):
-    if BUILD["proc"] and BUILD["proc"].poll() is None: return {"status": "Already building"}
+    if BUILD["proc"] and BUILD["proc"].poll() is None: return {"status": "Already building", "error": True}
     if not os.environ.get("FAL_KEY"): return {"status": "Set FAL_KEY before building a head.", "error": True}
-    os.makedirs(HEAD, exist_ok=True)
+    try:
+        os.makedirs(HEAD, exist_ok=True)
+        with _directory(HEAD): pass
+    except OSError: return {"status": "The head folder could not be opened.", "error": True}
+    if _head_status_text() == "PUBLISHING":
+        previous = _build_status()
+        if not previous.get("done"): return previous
     for f in ("status.txt", "head.bin", "head.json"):
         if os.path.exists(os.path.join(HEAD, f)): os.remove(os.path.join(HEAD, f))
     Path(HEAD, "photo").write_bytes(raw)
@@ -1573,15 +1596,32 @@ def build_status():
 
 
 def _build_status():
-    try: s = Path(HEAD, "status.txt").read_text().strip()
-    except Exception: s = "Starting"
+    s = _head_status_text()
     p = BUILD["proc"]
-    if s == "DONE":
-        files = ("head.bin", "head.json")
-        if any(not Path(HEAD, f).is_file() and not Path(STORE, f).is_file() for f in files):
+    if s == "PUBLISHED":
+        if _head_pair(STORE): return {"status": "Done", "done": True}
+        return {"status": "The saved head is missing a file.", "error": True}
+    if s in ("DONE", "PUBLISHING"):
+        if not _head_pair(HEAD):
             return {"status": "The completed build is missing a head file.", "error": True}
-        for f in files:
-            if os.path.exists(os.path.join(HEAD, f)): os.replace(os.path.join(HEAD, f), os.path.join(STORE, f))      # safe to ask twice
+        try:
+            with _directory(HEAD) as stage, _directory(STORE) as store:
+                if s == "DONE": _write_at(stage, "status.txt", "PUBLISHING", replace=True)
+                # Readers use the complete staged pair until both ordinary root files are ready.
+                for name in HEAD_FILES:
+                    copy = ".head-" + secrets.token_hex(16)
+                    os.link(name, copy, src_dir_fd=stage, dst_dir_fd=store, follow_symlinks=False)
+                    try:
+                        if not stat.S_ISREG(os.stat(copy, dir_fd=store, follow_symlinks=False).st_mode):
+                            raise ValueError("The staged head file changed.")
+                        os.replace(copy, name, src_dir_fd=store, dst_dir_fd=store)
+                    finally:
+                        try: os.unlink(copy, dir_fd=store)
+                        except FileNotFoundError: pass
+                os.fsync(store)
+                _write_at(stage, "status.txt", "PUBLISHED", replace=True)
+        except (OSError, ValueError):
+            return {"status": "Could not save the complete head. Check space and permissions, then try again.", "error": True}
         return {"status": "Done", "done": True}
     if s.startswith("ERROR") or (p and p.poll() not in (None, 0)):
         return {"status": s[6:] if s.startswith("ERROR") else "The build stopped. It needs numpy, pillow, trimesh, opencv and rembg. See head/build.log in the twin data folder.", "error": True}
@@ -1652,7 +1692,7 @@ class H(BaseHTTPRequestHandler):
             return self.send(Path(HERE, "ui.html").read_text(encoding="utf-8").replace("__TOKEN__", TOKEN).encode(), "text/html; charset=utf-8")
         ext = os.path.splitext(p)[1]
         if p in ("/head.bin", "/head.json"):
-            return self.send(Path(head_file(p[1:])).read_bytes(), TYPES.get(ext, "application/json"))
+            return self.send(read_head(p[1:]), TYPES.get(ext, "application/json"))
         if p in ("/Archivo-VF.ttf", "/IBMPlexMono-Regular.ttf"):
             return self.send(Path(HERE, p[1:]).read_bytes(), TYPES[ext])
         if p == "/api/state" and self.authed(): return self.send(state())

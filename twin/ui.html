@@ -365,7 +365,26 @@ async function openSetup(n){stepN=n||0;const c=await(await api('config',{})).jso
   $$('.step').forEach(b=>b.onclick=()=>{stepN=+b.dataset.s;draw()});[face,voice,notes][stepN]()};
  const face=()=>{$('#out').innerHTML=`<div style="height:34px"></div>`+K('Step 1')+`<h3 class="go" style="color:var(--fg);padding:0">One photo becomes the head</h3><label id="drop"><input type="file" accept="image/*" hidden id="pf"><span id="dl">Drop a photo here, or click to choose</span></label><p style="color:var(--mid)">Front-facing, even light, head and shoulders. Use your own face, or one you have written consent for.</p><p style="color:var(--mid);margin-top:10px">Choosing a photo checks a temporary copy here. Missing model files may download from GitHub. Build sends the cut-out to fal on your account and keeps build files here.</p><label style="display:flex;gap:10px;align-items:flex-start;margin:14px 0 4px;cursor:pointer"><input type="checkbox" id="pok" style="width:18px;height:18px;accent-color:#E4552A;margin-top:3px;flex:none"><span>This is a photo of me, or I have written consent from the person in it.</span></label><div class="acts"><button class="go" id="bb" disabled>Build my head</button></div><p class="fine" id="ps">${c.has_fal?'':'Needs FAL_KEY in the shell that starts the twin.'}</p>`;
   const coach=async f=>{$('#ps').textContent='Checking the photo';let j;try{j=await(await api('setup/check',f,1)).json()}catch(e){j={issues:['The photo check could not be reached.'],good:[]}}if(!$('#ps'))return;$('#ps').innerHTML=(j.issues||[]).length?'<span style="color:var(--sig)">Fix first: '+j.issues.map(esc).join(' · ')+'</span>':esc((j.good||['Good photo.']).join(' · '));$('#bb').textContent=(j.issues||[]).length?'Build anyway':'Build my head'};let file;const pick=f=>{if(!f||!/^image\//.test(f.type))return;file=f;$('#dl').innerHTML=`<img src="${URL.createObjectURL(f)}" alt="">${esc(f.name)}`;$('#bb').disabled=!c.has_fal;coach(f)};$('#pf').onchange=e=>pick(e.target.files[0]);const d=$('#drop');d.ondragover=e=>{e.preventDefault();d.classList.add('over')};d.ondragleave=()=>d.classList.remove('over');d.ondrop=e=>{e.preventDefault();d.classList.remove('over');pick(e.dataTransfer.files[0])};
-  $('#bb').onclick=async()=>{if(!$('#pok').checked){$('#ps').textContent='Tick the box first.';return}$('#bb').disabled=true;thinkT=1;await api('setup/photo?consent=1',file,1);clearInterval(poll);poll=setInterval(async()=>{const j=await(await api('setup/status',{})).json();if($('#ps'))$('#ps').textContent=j.status;if(j.done||j.error){clearInterval(poll);thinkT=0;if(j.done){sheet();await loadHead();assign();stF=[];boot=0}}},2500)}};
+  $('#bb').onclick=async()=>{
+   const button=$('#bb'),status=$('#ps');
+   if(!$('#pok').checked){status.textContent='Tick the box first.';return}
+   const stop=message=>{clearInterval(poll);thinkT=0;button.disabled=false;status.textContent=message};
+   const result=async(route,body,raw)=>{
+    const response=await api(route,body,raw),j=await response.json();
+    if(!response.ok||j.error||!j.status)throw new Error(j.status||(typeof j.error==='string'&&j.error)||'The build did not return a status.');
+    return j};
+   button.disabled=true;thinkT=1;clearInterval(poll);
+   try{const j=await result('setup/photo?consent=1',file,1);status.textContent=j.status}
+   catch(e){stop('Could not confirm the build. '+e.message);return}
+   let checking=false;
+   poll=setInterval(async()=>{
+    if(checking)return;checking=true;
+    try{const j=await result('setup/status',{});status.textContent=j.status;
+     if(j.done){clearInterval(poll);thinkT=0;sheet();await loadHead();assign();stF=[];boot=0}}
+    catch(e){stop('Could not read the build result. '+e.message)}
+    finally{checking=false}
+   },2500)
+  }};
  const voice=async()=>{$('#out').innerHTML=`<div style="height:34px"></div>`+K('Step 2')+`<h3 class="go" style="color:var(--fg);padding:0">Give it your voice</h3><p style="color:var(--mid);margin-bottom:14px">Click a voice to hear it. The system voice is free and stays on this machine. With a key, opening this list requests your account voices from ElevenLabs. A preview sends sample text. Speaking sends reply text unless it is already cached. Use your own voice, or one you have written consent for.</p><div id="vl">${c.has_voice_key?'Loading voices':'Set ELEVENLABS_API_KEY in the shell that starts the twin, then reload.'}</div><div id="vc"></div>`;if(!c.has_voice_key)return;
   if(c.can_clone)cloneUI(c,voice);else $('#vc').textContent='To clone a voice, set ELEVENLABS_API_KEY in the shell that starts the twin.';
   const j=await(await api('voices',{})).json(),l=[{voice_id:'',name:'No voice',category:'text only'}].concat(j.voices||[]);$('#vl').innerHTML=l.map(v=>`<button class="vrow ${v.voice_id===(c.voice_id||'')?'sel':''}" data-v="${esc(v.voice_id)}"><span class="dot"></span><b>${esc(v.name)}</b><span class="s">${esc(v.category)}</span></button>`).join('')||'No voices found on that account.';

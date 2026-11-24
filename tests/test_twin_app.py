@@ -629,6 +629,96 @@ const api=async()=>({ok:true,json:async()=>({terminals:[],entries:[
                 twin.H.do_POST(request)
                 self.assertEqual(request.send.call_args.kwargs.get("code"), 400)
 
+    def test_head_promotion_rejects_partial_input_and_recovers_one_complete_pair(self):
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); stage = root / "head"; stage.mkdir()
+            files = ("head.bin", "head.json")
+            def read_page():
+                data = []
+                for name in files:
+                    request = Mock(path="/" + name)
+                    twin.H.do_GET(request)
+                    data.append(request.send.call_args.args[0])
+                return tuple(data)
+            old = (b"old geometry", b'{"points":1}')
+            new = (b"new geometry", b'{"points":2}')
+            for name, raw in zip(files, old): (root / name).write_bytes(raw)
+            (stage / "status.txt").write_text("DONE")
+            (stage / files[0]).write_bytes(new[0])
+            with patch.object(twin, "STORE", folder), patch.object(twin, "HEAD", str(stage)):
+                self.assertTrue(twin.build_status().get("error"))
+                self.assertEqual(read_page(), old)
+                (stage / files[1]).write_bytes(new[1])
+                replace = os.replace
+                def interrupt_first_publish(src, dest, **kwargs):
+                    if os.path.basename(dest) == "head.json": raise OSError("fixture disk failure")
+                    return replace(src, dest, **kwargs)
+                with patch.object(twin.os, "replace", side_effect=interrupt_first_publish):
+                    self.assertTrue(twin.build_status().get("error"))
+                    self.assertIn(read_page(), (old, new))
+                    with patch.object(twin.subprocess, "Popen") as start, patch.dict(os.environ, FAL_KEY="unused"):
+                        self.assertTrue(twin.build_head(b"another sample").get("error"))
+                        start.assert_not_called()
+                self.assertTrue(twin.build_status().get("done"))
+                self.assertEqual(read_page(), new)
+                for name, raw in zip(files, new): self.assertEqual((root / name).read_bytes(), raw)
+                with patch.object(twin.os, "replace") as write:
+                    self.assertTrue(twin.build_status().get("done"))
+                    write.assert_not_called()
+
+    def test_head_promotion_keeps_legacy_pair_and_stays_inside_its_data_folder(self):
+        from pathlib import Path
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder); store = base / "data"; stage = store / "head"; outside = base / "other"
+            stage.mkdir(parents=True); outside.mkdir()
+            for file in ("head.bin", "head.json"):
+                (store / file).write_bytes(b"legacy")
+                (outside / file).write_bytes(b"other")
+            (stage / "status.txt").write_text("DONE")
+            (outside / "status.txt").write_text("PUBLISHING")
+            with patch.object(twin, "STORE", str(store)), patch.object(twin, "HEAD", str(stage)):
+                self.assertTrue(twin.build_status().get("error"))
+                self.assertEqual(twin.read_head("head.bin"), b"legacy")
+                (stage / "status.txt").unlink(); stage.rmdir(); stage.symlink_to(outside, target_is_directory=True)
+                self.assertEqual(twin.read_head("head.bin"), b"legacy")
+                self.assertTrue(twin.build_status().get("error"))
+                self.assertEqual((outside / "status.txt").read_text(), "PUBLISHING")
+
+    def test_head_submission_errors_do_not_poll_and_allow_retry(self):
+        import shutil
+        node = shutil.which("node")
+        if not node: self.skipTest("Node is needed for this page check")
+        script = r"""
+const fs=require('node:fs'), vm=require('node:vm'), assert=require('node:assert/strict');
+const page=fs.readFileSync('twin/ui.html','utf8');
+const setup=page.slice(page.indexOf('let stepN='),page.indexOf('// ---------------------------------------------------------------- start'));
+const nodes=new Map(), $=k=>{if(!nodes.has(k))nodes.set(k,{}); return nodes.get(k)};
+let response, polls=0, checks=0, tick;
+const app={$, $$:()=>[], K:()=>'', sheet(){}, esc:String, thinkT:0, clearInterval(){},
+  setInterval:f=>{polls++;tick=f;return polls}, api:async route=>{
+    if(route==='config')return {ok:true,json:async()=>({has_fal:true})};
+    if(route==='setup/status') {checks++;return {ok:false,json:async()=>({error:'Could not read status.'})};}
+    assert.equal(route,'setup/photo?consent=1'); if(response==='offline')throw Error('offline');
+    return response;}};
+vm.runInNewContext(setup,app);
+(async()=>{
+  await app.openSetup(0); $('#pok').checked=true;
+  for(const [reply, reason] of [[{ok:true,json:async()=>({error:true,status:'No build key.'})},/No build key/],
+       [{ok:false,json:async()=>({error:'Request refused.'})},/Request refused/],['offline',/could not|failed/i]]){
+    response=reply; await $('#bb').onclick();
+    assert.equal(polls,0); assert.equal($('#bb').disabled,false); assert.match($('#ps').textContent,reason);
+  }
+  response={ok:true,json:async()=>({status:'Starting'})}; await $('#bb').onclick();
+  assert.equal(polls,1); await tick(); assert.equal(checks,1);
+  assert.match($('#ps').textContent,/Could not read status/); assert.equal($('#bb').disabled,false);
+})().catch(e=>{console.error(e);process.exitCode=1});
+"""
+        result = subprocess.run([node, "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_head_preflight_discards_original_and_busy_jobs_do_not_log_consent(self):
         from pathlib import Path
         from unittest.mock import Mock, patch
