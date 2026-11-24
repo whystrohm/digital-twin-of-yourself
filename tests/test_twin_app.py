@@ -1163,6 +1163,121 @@ assert new['title'] == 'Crates in the second source are green.'
         request.send.assert_not_called()
         self.assertIs(request.close_connection, True)
 
+    def test_page_without_webgl_keeps_notes_keyboard_and_questions(self):
+        import shutil
+        node = shutil.which("node")
+        if not node: self.skipTest("Node is needed for this page check")
+        script = r"""
+const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const html = fs.readFileSync('twin/ui.html', 'utf8'), page = html.split('<script>')[1].split('</script>')[0];
+const nodes = new Map(), keys = {}, calls = [];
+function node(selector) {
+  if (!nodes.has(selector)) {
+    const classes = new Set();
+    nodes.set(selector, { style: {}, innerHTML: '', textContent: '', children: [], offsetWidth: 100,
+      classList: {add: (...c) => c.forEach(x => classes.add(x)), remove: (...c) => c.forEach(x => classes.delete(x)),
+        toggle: (c, on) => on ? classes.add(c) : classes.delete(c), contains: c => classes.has(c)},
+      focus() { this.focused = true; }, getContext: () => null, addEventListener() {}, querySelectorAll: () => [] });
+  }
+  return nodes.get(selector);
+}
+const state = {name:'Sample', now:'2026-01-01', terminals:[], shipped:[], repos:[], priorities:[],
+  areas:['decisions'], entries:[{id:'sample', area:'decisions', title:'Choose blue', since:'2026-01-01', mod:'2026-01-01'}]};
+const document = {body:node('body'), querySelector:node, querySelectorAll:() => [], fonts:{ready:Promise.resolve()}};
+const app = {document, localStorage:{}, location:{search:''}, innerWidth:1100, innerHeight:800,
+  addEventListener:(key, fn) => { keys[key]=fn; }, requestAnimationFrame() {}, setInterval() {}, setTimeout() {},
+  fetch:async (url, request) => {
+    calls.push(url);
+    assert.ok(['/api/state','/api/ask'].includes(url), url);
+    return {ok:true, json:async () => url === '/api/state' ? state : {text:'Choose blue', sources:['sample']}};
+  }};
+app.window=app;
+vm.runInNewContext(page, app);
+(async () => {
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(document.body.classList.contains('on'));
+  assert.match(node('#hint').textContent, /3D.*(unavailable|needs)/i);
+  assert.equal(typeof node('#bsetup').onclick, 'function');
+  assert.doesNotMatch(node('#mem').innerHTML, /lights up on the head/);
+  app.__twin.openCheck();
+  assert.equal(node('#dr').focused, true);
+  assert.equal(typeof node('#bc').onclick, 'function');
+  app.__twin.sheet();
+  keys.keydown({key:'/', target:{tagName:'BODY'}, preventDefault() {}});
+  assert.equal(node('#q').focused, true);
+  app.__twin.setSel(0);
+  assert.match(node('#mem').innerHTML, /Choose blue/);
+  node('#q').onkeydown({key:'Enter', target:{value:'Which color?'}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ['/api/state','/api/ask']);
+  assert.match(node('#txt').innerHTML, /blue/);
+})().catch(error => { console.error(error); process.exitCode=1; });
+"""
+        result = subprocess.run([node, "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_setup_offers_recording_only_when_cloning_is_available(self):
+        import shutil
+        node = shutil.which("node")
+        if not node: self.skipTest("Node is needed for this page check")
+        script = r"""
+const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const page = fs.readFileSync('twin/ui.html','utf8');
+const setup = page.slice(page.indexOf('let stepN='), page.indexOf('// ---------------------------------------------------------------- start'));
+async function check(config) {
+  const nodes = new Map(), calls = []; let cloneForms = 0;
+  const $ = key => { if(!nodes.has(key)) nodes.set(key,{}); return nodes.get(key); };
+  const app = {$, $$:()=>[], K:() => '', esc:String, sheet(){}, cloneUI:()=>cloneForms++,
+    api:async route => {calls.push(route);
+      if(route==='config') return {json:async()=>config};
+      assert.equal(route,'voices'); return {json:async()=>({voices:[{name:'System voice',voice_id:'system'}]})}; }};
+  vm.runInNewContext(setup,app);
+  await app.openSetup(1); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cloneForms, config.can_clone ? 1 : 0);
+  assert.deepEqual(calls, config.has_voice_key ? ['config','voices'] : ['config']);
+  if(config.has_voice_key) assert.match($('#vl').innerHTML, /System voice/);
+  if(config.has_voice_key && !config.can_clone) assert.match($('#vc').textContent, /ELEVENLABS_API_KEY/);
+}
+(async()=>{
+  await check({has_voice_key:true,can_clone:false});
+  await check({has_voice_key:true,can_clone:true});
+  await check({has_voice_key:false,can_clone:false});
+})().catch(error => {console.error(error);process.exitCode=1});
+"""
+        result = subprocess.run([node, "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_head_builder_closes_files_images_and_poll_responses(self):
+        import ast, io, urllib.request
+        from pathlib import Path
+        from unittest import mock
+        path = Path(ROOT, "twin", "head", "build.py")
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        managed = {item.context_expr for node in ast.walk(tree) if isinstance(node, ast.With)
+                   for item in node.items}
+        owners = {"open", "Image.open", "urllib.request.urlopen"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and ast.unparse(node.func) in owners:
+                with self.subTest(line=node.lineno):
+                    self.assertIn(node, managed)
+        # Run just the provider JSON reader. Loading the whole builder needs optional models.
+        fn = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "call")
+        env = {"json": json, "urllib": urllib, "H": {}}
+        exec(compile(ast.Module([fn], type_ignores=[]), str(path), "exec"), env)
+        for payload in (b'{"status":"COMPLETED"}', b''):
+            with self.subTest(response=payload):
+                stream = io.BytesIO(payload)
+                with mock.patch.object(urllib.request, "urlopen", return_value=stream):
+                    if payload:
+                        self.assertEqual(env["call"]("https://example.invalid/status"), {"status": "COMPLETED"})
+                    else:
+                        with self.assertRaises(ValueError):
+                            env["call"]("https://example.invalid/status")
+                self.assertTrue(stream.closed)
+
+
+
+
 
 
 

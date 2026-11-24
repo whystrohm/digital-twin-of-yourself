@@ -3,12 +3,13 @@
   build.py --glb model.glb --out DIR    (the face detector downloads if missing)
 Needs numpy, pillow, trimesh, opencv, rembg (photo only). Finds the face on the mesh itself, so regions and the jaw fit any head."""
 import argparse,base64,json,os,sys,time,urllib.request
+from pathlib import Path
 HERE=os.path.dirname(os.path.abspath(__file__))
 ap=argparse.ArgumentParser(); ap.add_argument('--photo'); ap.add_argument('--glb'); ap.add_argument('--consent',action='store_true',help='you confirm this is your own photo, or you have written consent from the person in it');ap.add_argument('--body',action='store_true',help='a full-length photo: keep the whole figure');ap.add_argument('--left-front');ap.add_argument('--right-front');ap.add_argument('--ref',help='the cut-out photo the mesh was built from');ap.add_argument('--check',help='look at a photo and say what to fix; prints JSON');ap.add_argument('--out'); ap.add_argument('--points',type=int,default=270000); a=ap.parse_args()
 if a.photo and not a.consent: ap.error('Add --consent to confirm permission to use the photo.')
 if a.photo and not os.environ.get('FAL_KEY'): ap.error('Set FAL_KEY before building a head.')
 import numpy as np, cv2
-from PIL import Image
+from PIL import Image, ImageOps
 YUNET=os.path.join(HERE,'yunet.onnx'); YUNET_URL='https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
 def yunet():
     if not os.path.exists(YUNET): urllib.request.urlretrieve(YUNET_URL,YUNET)   # a small face finder, fetched once
@@ -34,21 +35,26 @@ if a.check:
     print(json.dumps({'ok':not issues,'issues':issues,'good':good})); sys.exit()
 if not a.out: ap.error('--out is required')
 os.makedirs(a.out,exist_ok=True)
-def say(s): print(s,flush=True); open(os.path.join(a.out,'status.txt'),'w').write(s)
+def say(s):
+    print(s, flush=True)
+    Path(a.out, 'status.txt').write_text(s, encoding='utf-8')
 import trimesh
 if a.photo:
     say('Cutting you out of the photo')
     from rembg import remove,new_session
     sess=new_session('birefnet-portrait')
     def cutout(path,name):
-        im=Image.open(path); im=__import__('PIL.ImageOps',fromlist=['x']).exif_transpose(im).convert('RGB'); im.thumbnail((2400,2400)); cut=remove(im,session=sess); arr=np.asarray(cut).astype(float)
+        with Image.open(path) as original:
+            im = ImageOps.exif_transpose(original).convert('RGB')
+        im.thumbnail((2400,2400)); cut=remove(im,session=sess); arr=np.asarray(cut).astype(float)
         al=arr[...,3:]/255; ys,xs=np.nonzero(al[...,0]>.5)
         if len(ys)<2000: say('ERROR No person found in that photo'); sys.exit(1)
         rgb=np.clip(arr[...,:3]/255,0,1)**.6; flat=Image.fromarray(((rgb*al+.93*(1-al))*255).astype('uint8'))
         x0,x1,y0=xs.min(),xs.max(),ys.min(); w=x1-x0; side=int((max(w,ys.max()-y0) if a.body else w)*1.04); cx=(x0+x1)//2; top=max(0,y0-int(side*.02))
         c=flat.crop((cx-side//2,top,cx+side//2,top+side)); sq=Image.new('RGB',(side,side),(237,237,237)); sq.paste(c,(0,0)) if not a.body else sq.paste(flat.crop((max(0,cx-side//2),top,min(flat.size[0],cx+side//2),min(flat.size[1],top+side))),(max(0,side//2-cx),0)); sq=sq.resize((1536,1536),3); out=os.path.join(a.out,name); sq.save(out,quality=94); return out
     src=cutout(a.photo,'input.jpg'); a.ref=src
-    b64=lambda f:'data:image/jpeg;base64,'+base64.b64encode(open(f,'rb').read()).decode()
+    def b64(path):
+        return 'data:image/jpeg;base64,' + base64.b64encode(Path(path).read_bytes()).decode()
     body={'input_image_url':b64(src)}
     if a.left_front: body['left_front_image_url']=b64(cutout(a.left_front,'left.jpg'))
     if a.right_front: body['right_front_image_url']=b64(cutout(a.right_front,'right.jpg'))
@@ -56,9 +62,13 @@ if a.photo:
     if not key: say('ERROR No FAL_KEY set'); sys.exit(1)
     say('Building the 3D head. About two minutes')
     H={'Authorization':'Key '+key,'Content-Type':'application/json'}
-    def call(u,b=None): return json.load(urllib.request.urlopen(urllib.request.Request(u,data=json.dumps(b).encode() if b else None,headers=H),timeout=180))
+    def call(u,b=None):
+        request = urllib.request.Request(u, data=json.dumps(b).encode() if b else None, headers=H)
+        with urllib.request.urlopen(request, timeout=180) as response:
+            return json.load(response)
     s=call('https://queue.fal.run/fal-ai/hunyuan-3d/v3.1/pro/image-to-3d',body)
-    open(os.path.join(a.out,'request.txt'),'w').write(s['request_id']); t=time.time()
+    Path(a.out, 'request.txt').write_text(s['request_id'], encoding='utf-8')
+    t=time.time()
     while call(s['status_url'])['status']!='COMPLETED':
         if time.time()-t>900: say('ERROR The 3D build timed out'); sys.exit(1)
         time.sleep(6)
@@ -144,4 +154,5 @@ dz=np.where((ys[:-1]>-.049)&(ys[:-1]<-.027),np.diff(zs),np.nan); li=int(np.nanar
 T_=lambda v:[round(float(x),4) for x in ((np.array(v)-org[:len(v)])*sc_)]
 meta={'points':len(q),'mouth':T_(mouth),'mouthW':round(float(mw*sc_),4),'chin':T_([0,chin])[1],'eyes':T_([0,ec[1]])[1],'shoulders':T_([0,sh])[1],'bounds':[T_(p.min(0)),T_(p.max(0))],'areas':np.bincount(reg,minlength=5).tolist(),'body':bool(a.body)}
 if li is not None and dz[li]>.002: meta['mouth']=[0.0,round(float(ys[li]+.00125),4),round(float(zs[li]),4)]
-json.dump(meta,open(os.path.join(a.out,'head.json'),'w')); print(json.dumps(meta)); say('DONE')
+Path(a.out, 'head.json').write_text(json.dumps(meta), encoding='utf-8')
+print(json.dumps(meta)); say('DONE')
