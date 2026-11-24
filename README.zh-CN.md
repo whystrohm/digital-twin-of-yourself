@@ -1,29 +1,58 @@
-# Digital Twin of Yourself（你自己的数字分身）
+<p align="center"><a href="https://whystrohm.com/twin"><img src="assets/twin-cover.webp" alt="一个了解你工作的数字分身。三样东西输入：你的照片变成头像，你的仓库被读取，你的笔记填满它。然后它回答“这周发布了什么？”，并在“给供应商发邮件”时停下来等你确认" width="100%"></a></p>
 
-[English](README.md) · **简体中文**
+<h3 align="center">一个了解你工作的数字分身。</h3>
 
-**一个了解你工作的数字分身。**
+<p align="center">把你的决定、语气规则和底线放在一个地方，让你的编程会话随时来问。<br>
+用一张照片、你自己的声音、你的笔记和你选的仓库来搭建。<br>
+它运行在你自己的电脑上，配合 Claude Code 或任何支持 MCP 的工具，用你自己的密钥。</p>
 
-把你的决定、语气规则和底线放在一个地方，让你的编程会话随时可以来问。它运行在你自己的电脑上。你保存笔记文件夹后，选中的笔记才会被读入。会话可以提议新笔记，但要等你审核通过后才会进入记忆。
+<p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-适合已经在用编程智能体、又厌倦了同一件事要纠正两遍的人。
+<p align="center">
+  <a href="https://github.com/whystrohm/digital-twin-of-yourself/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/whystrohm/digital-twin-of-yourself/actions/workflows/test.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/whystrohm/digital-twin-of-yourself/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/whystrohm/digital-twin-of-yourself?label=release&color=E4552A"></a>
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-informational"></a>
+  <a href="https://github.com/whystrohm/digital-twin-of-yourself"><img alt="Stars" src="https://img.shields.io/github/stars/whystrohm/digital-twin-of-yourself?style=flat&color=informational"></a>
+</p>
 
-**4.0 新增：** 分身应用、用你的照片生成的头像、声音，以及给编程会话用的 MCP 服务器。[在 whystrohm.com/twin 查看](https://whystrohm.com/twin?utm_source=github&utm_medium=repo&utm_campaign=twin-4-zh) · [使用指南（英文）](docs/TWIN.md) · [更新日志（英文）](CHANGELOG.md)
+<p align="center">
+  <a href="https://whystrohm.com/twin?utm_source=github&utm_medium=repo&utm_campaign=twin-4-zh"><strong>完整介绍</strong></a> ·
+  <a href="#一分钟试用">试用</a> ·
+  <a href="#变成你自己的">做你自己的</a> ·
+  <a href="#接入你的编程会话">Claude Code</a> ·
+  <a href="#什么会离开你的电脑">什么会离开你的电脑</a> ·
+  <a href="docs/TWIN.md">使用指南（英文）</a>
+</p>
 
-![一个了解你工作的数字分身。三样东西输入：你的照片变成头像，你的仓库被读取，你的笔记填满它。然后它回答“这周发布了什么？”，并在“给供应商发邮件”时停下来等你确认](assets/twin-cover.webp)
+<p align="center"><strong>4.0 新增：</strong> 分身应用、用你的照片生成的头像、声音，<br>以及给编程会话用的 MCP 服务器。免费开源。 <a href="https://github.com/whystrohm/digital-twin-of-yourself/releases">获取</a></p>
 
-*演示里的人物是虚构的：生成的人脸和编造的笔记。画面中的仓库数量和回答只是示例。*
+<p align="center"><em>演示里的人物是虚构的：生成的人脸和编造的笔记。画面中的仓库数量和回答只是示例。</em></p>
+
+## 它能做什么
+
+AI 工具很快，但它们不了解你。同一件事你在每个会话里都要纠正一遍，草稿出来是千篇一律的腔调，智能体不打招呼就动手。分身给你的决定一个固定的家，每个会话都能来读。
+
+- **长得像你。** 拖入一张照片，得到一个由点组成、可以三百六十度转动的 3D 头像。
+- **听起来像你。** 录一分钟，在你自己的 ElevenLabs 账号上克隆声音。分身会用你自己的声音把你自己的决定念给你听。第一次听有点诡异，但这也是判断一句话像不像你的最快办法。
+- **知道你做过的决定。** 每一个点就是一条笔记：一个决定、一种偏好、一条语气规则或一条底线，附带原因和日期。把鼠标移到头像上，看到的就是你的工作方式，白纸黑字。
+- **读你的代码。** 列出你的仓库，它会读取其中的指令文件，并把找到的规则作为提议交给你。你能看到编程工具被告知了哪些关于你的事，又漏掉了哪些。
+- **回答带出处。** 问它你当时怎么决定的，它会显示答案来自哪一条笔记。
+- **用你的语气检查草稿。** 贴一段草稿，它会指出每一行不符合你规则的地方。
+- **在你的底线前停下。** 报告命中的底线，对它识别出的受限操作请求你确认。它给的是建议，无法阻止其他工具执行操作。
+- **为智能体而建。** 它是一个 MCP 服务器，Claude Code 可以在瞎猜之前先问它，并在你纠正它时提议一条笔记。会话不能批准自己的提议。
+- **留在你的电脑上。** 笔记是纯 Markdown 文件。默认设置下，没有任何东西离开你的电脑。
+
+## 工作流程
+
+![1. 启动演示：一条命令。2. 加入你的脸：一张照片，先检查。3. 加入你的声音：系统语音或克隆你自己的。4. 指向你的工作：一个笔记文件夹和你选的仓库。5. 接入你的会话：Claude Code 在瞎猜之前先问分身。](assets/twin-how.zh-CN.png)
 
 ![页面：头像上打开了一条笔记，显示笔记内容、原因和日期](assets/twin.png)
+
+*第一次运行时看到的演示分身。Maya 是虚构的：生成的人脸和编造的笔记。*
 
 ## 做一个你自己的分身
 
 演示用的是虚构人物。真正有意思的是做你自己的，看看会得到什么。
-
-- **你的脸。** 拖入一张照片，得到一个由点组成、可以三百六十度转动的 3D 头像。
-- **你的声音。** 录一分钟，在你自己的 ElevenLabs 账号上克隆。分身会用你自己的声音把你自己的决定念给你听。第一次听有点诡异，但这也是判断一句话像不像你的最快办法。
-- **你的思路。** 每一个点就是一条笔记：一个决定、一种偏好、一条语气规则或一条底线，附带原因和日期。把鼠标移到头像上，看到的就是你的工作方式，白纸黑字。
-- **你的代码。** 列出你的仓库，它会读取其中的指令文件，并把找到的规则作为提议交给你。你能看到编程工具被告知了哪些关于你的事，又漏掉了哪些。
 
 你自己写的文字是最可靠的来源。别人的范例无法告诉模型你是怎么说话的。本仓库里的[语气工具（英文）](docs/VOICE-TOOLS.md)会测量你的写作习惯，把它变成检查器可以执行的规则，这样草稿、帖子和营销文案出来的是你的语言，而不是千篇一律的腔调。
 

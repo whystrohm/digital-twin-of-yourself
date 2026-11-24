@@ -1,18 +1,50 @@
-# Digital Twin of Yourself
+<p align="center"><a href="https://whystrohm.com/twin"><img src="assets/twin-cover.webp" alt="A digital twin that knows your work. Three inputs go in: your photo becomes the head, your repos are read, your notes fill it. Then it answers &quot;what shipped this week?&quot; and stops at &quot;email the supplier&quot; with &quot;that one needs your yes&quot;" width="100%"></a></p>
 
-**English** · [简体中文](README.zh-CN.md)
+<h3 align="center">A digital twin that knows your work.</h3>
 
-**A digital twin that knows your work.**
+<p align="center">Your decisions, voice rules and limits, in one place your coding sessions can ask.<br>
+Build it from one photo, your own voice, your notes and the repos you pick.<br>
+It runs on your machine, with Claude Code or any tool that speaks MCP, and your own keys.</p>
 
-Your decisions, voice rules and limits, available to your coding sessions. It runs on your machine. Selected notes load when you save their folder. Sessions can propose new notes, and you review those before they enter recall.
+<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 
-Built for people who already work with coding agents and are tired of correcting the same thing twice.
+<p align="center">
+  <a href="https://github.com/whystrohm/digital-twin-of-yourself/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/whystrohm/digital-twin-of-yourself/actions/workflows/test.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/whystrohm/digital-twin-of-yourself/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/whystrohm/digital-twin-of-yourself?label=release&color=E4552A"></a>
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-informational"></a>
+  <a href="https://github.com/whystrohm/digital-twin-of-yourself"><img alt="Stars" src="https://img.shields.io/github/stars/whystrohm/digital-twin-of-yourself?style=flat&color=informational"></a>
+</p>
 
-**New in 4.0:** the twin app, a head built from your photo, a voice, and an MCP server for your coding sessions. [See it on whystrohm.com/twin](https://whystrohm.com/twin?utm_source=github&utm_medium=repo&utm_campaign=twin-4) · [How it works](docs/TWIN.md) · [Changelog](CHANGELOG.md)
+<p align="center">
+  <a href="https://whystrohm.com/twin?utm_source=github&utm_medium=repo&utm_campaign=twin-4"><strong>Full tour</strong></a> ·
+  <a href="#try-it-in-one-minute">Try it</a> ·
+  <a href="#make-it-yours">Make it yours</a> ·
+  <a href="#connect-your-coding-sessions">Claude Code</a> ·
+  <a href="#what-leaves-your-machine">What leaves your machine</a> ·
+  <a href="docs/TWIN.md">Guide</a>
+</p>
 
-![A digital twin that knows your work. Three inputs go in: your photo becomes the head, your repos are read, your notes fill it. Then it answers "what shipped this week?" and stops at "email the supplier" with "That one needs your yes"](assets/twin-cover.webp)
+<p align="center"><strong>New in 4.0:</strong> the twin app, a head built from your photo, a voice,<br>and an MCP server for your coding sessions. Free and open source. <a href="https://github.com/whystrohm/digital-twin-of-yourself/releases">Get it</a></p>
 
-*A made-up person: a generated face and made-up notes. The repo counts and the answer about what shipped are examples.*
+<p align="center"><em>The person in the demo is made up: a generated face and made-up notes. The repo counts and the answer about what shipped are examples.</em></p>
+
+## What it does
+
+AI tools are fast and they do not know you. You correct the same thing in every session, drafts come back in a generic voice, and agents act without asking. The twin gives your decisions one home that every session can read.
+
+- **Looks like you.** Drop one photo. You get a 3D head made of dots that you can turn all the way round.
+- **Sounds like you.** Record a minute and clone your voice on your own ElevenLabs account. The twin reads your own decisions back to you in your own voice. It is a little eerie the first time. It is also the fastest way to hear whether a line sounds like you.
+- **Knows what you decided.** Every dot is one note: a decision, a taste, a voice rule or a limit, with its reason and its date. Hover the head and you are looking at how you work, written down.
+- **Reads your code.** List your repos and it reads their instruction files and proposes the rules it finds. You see what your coding tools have been told about you, and what they have not.
+- **Answers with the source.** Ask it what you decided and it shows the note it came from.
+- **Checks drafts in your voice.** Paste a draft and it names each line that fails your rules.
+- **Stops at your limits.** It reports matching limits and asks for your yes on restricted actions it recognizes. It gives advice. It cannot stop another tool from acting.
+- **Built for agents.** It is an MCP server, so Claude Code can ask it before it guesses and propose a note when you correct it. A session cannot accept its own proposal.
+- **Stays on your machine.** Notes are plain Markdown files. With the default settings nothing leaves your computer.
+
+## How it works
+
+![1. Start the demo: one command. 2. Add your face: one photo, checked first. 3. Add your voice: the system voice or a clone of yours. 4. Point it at your work: a notes folder and the repos you pick. 5. Connect your sessions: Claude Code asks the twin before it guesses.](assets/twin-how.png)
 
 ![The page: the head with one note open, showing the note, the reason and the date](assets/twin.png)
 
@@ -21,11 +53,6 @@ Built for people who already work with coding agents and are tired of correcting
 ## Build your own clone
 
 The demo is a made-up person. The point is to make yours and see what comes out.
-
-- **Your face.** Drop one photo. You get a 3D head made of dots that you can turn all the way round.
-- **Your voice.** Record a minute and clone it on your own ElevenLabs account. The twin reads your own decisions back to you in your own voice. It is a little eerie the first time. It is also the fastest way to hear whether a line sounds like you.
-- **Your thinking.** Every dot is one note: a decision, a taste, a voice rule or a limit, with its reason and its date. Hover the head and you are looking at how you work, written down.
-- **Your code.** List your repos and it reads their instruction files and proposes the rules it finds. You see what your coding tools have been told about you, and what they have not.
 
 Your own writing is the strongest source there is. Nobody else's examples tell a model how you sound. The [voice tools](docs/VOICE-TOOLS.md) in this repo measure how you write and turn it into rules a checker can run, so drafts, posts and marketing copy come back in your language and not a generic one.
 
