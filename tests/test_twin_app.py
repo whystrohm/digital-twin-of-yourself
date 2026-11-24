@@ -314,6 +314,186 @@ const api=async()=>({ok:true,json:async()=>({terminals:[],entries:[
     def test_audit_reads_nothing_when_no_repo_is_listed(self):
         self.assertEqual(twin.audit()["read"], [])
 
+    def _shared_settings_case(self, body):
+        with tempfile.TemporaryDirectory(prefix="twin-settings-", dir="/tmp") as td:
+            home = os.path.realpath(os.path.join(td, "home"))
+            data = os.path.realpath(os.path.join(td, "data"))
+            scratch = os.path.realpath(os.path.join(td, "tmp"))
+            for folder in (home, data, scratch): os.makedirs(folder)
+            env = {k: v for k, v in os.environ.items() if not any(s in k.upper() for s in ("KEY", "TOKEN", "SECRET"))}
+            env.update(HOME=home, TWIN_HOME=data, TMPDIR=scratch, XDG_CACHE_HOME=os.path.join(scratch, "cache"), PYTHONDONTWRITEBYTECODE="1")
+            start = "import json, os, sqlite3, sys\nfrom unittest import mock\nsys.path.insert(0, 'twin')\nimport twin\n"
+            result = subprocess.run([sys.executable, "-B", "-c", start + body], cwd=ROOT, env=env,
+                                    capture_output=True, text=True, timeout=12)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_shared_settings_reload_even_when_mtime_is_reused(self):
+        self._shared_settings_case("""
+before = os.stat(twin.CFG_PATH)
+with open(twin.CFG_PATH) as f: settings = json.load(f)
+settings['name'] = 'Nora'
+with open(twin.CFG_PATH, 'w') as f: json.dump(settings, f)
+os.utime(twin.CFG_PATH, ns=(before.st_atime_ns, before.st_mtime_ns))
+twin.sync_cfg()
+assert twin.CFG['name'] == 'Nora'
+""")
+
+    def test_shared_settings_save_preserves_a_newer_writer(self):
+        self._shared_settings_case("""
+with open(twin.CFG_PATH) as f: settings = json.load(f)
+settings['name'] = 'Nora'
+with open(twin.CFG_PATH, 'w') as f: json.dump(settings, f)
+result = twin.config({'read_sessions': False})
+assert 'error' not in result, result
+assert twin.CFG['name'] == 'Nora'
+with open(twin.CFG_PATH) as f: assert json.load(f)['name'] == 'Nora'
+""")
+
+    def test_shared_settings_failed_save_applies_nothing(self):
+        self._shared_settings_case("""
+before = dict(twin.CFG)
+logs = twin.DB.execute('select count(*) from log').fetchone()[0]
+replace = os.replace
+def fail_config(source, target):
+    if target == twin.CFG_PATH: raise OSError('synthetic disk failure')
+    return replace(source, target)
+with mock.patch.object(os, 'replace', side_effect=fail_config):
+    try: twin.config({'name': 'Nora', 'read_sessions': True})
+    except OSError: pass
+assert twin.CFG == before
+assert twin.DB.execute('select count(*) from log').fetchone()[0] == logs
+assert not os.path.exists(twin.CFG_PATH + '.tmp')
+""")
+
+    def test_shared_settings_lock_can_be_nested(self):
+        self._shared_settings_case("""
+with twin.locked():
+    with twin.locked():
+        pass
+""")
+
+    def test_shared_settings_repo_identity_revokes_same_named_source(self):
+        self._shared_settings_case("""
+first = os.path.join(twin.HOME, 'first', 'shared')
+second = os.path.join(twin.HOME, 'second', 'shared')
+for folder in (first, second): os.makedirs(os.path.join(folder, '.git'))
+def sample_git(args, cwd, timeout=8):
+    if args[:1] == ['log'] and '--since=30.days' in args:
+        return 'abc123|2999-01-01T00:00:00|Synthetic work from the first repo'
+    if args[:1] == ['rev-parse'] and '-q' in args: return 'abc123'
+    if args[:1] == ['log']: return '2999-01-01T00:00:00|Synthetic work'
+    return ''
+twin.CFG['repos'] = [first]
+with mock.patch.object(twin, 'git', side_effect=sample_git): twin.repos()
+assert len(twin.shipped()) == 1
+twin.CFG['repos'] = [second]
+assert twin.shipped() == []
+""")
+
+    def test_shared_settings_review_revision_is_seen_across_processes(self):
+        self._shared_settings_case("""
+note = twin.IX.search('do we ship on a friday')[1][0]
+other = sqlite3.connect(os.path.join(twin.STORE, 'twin.db'))
+other.execute('insert or replace into review values(?,?,?)', (note['id'], 'true', '2026-01-01T00:00:00'))
+other.commit()
+assert any(e['id'] == note['id'] for e in twin.IX.get().e)
+other.execute('update review set verdict=? where key=?', ('outdated', note['id']))
+other.commit()
+assert not any(e['id'] == note['id'] for e in twin.IX.get().e)
+other.close()
+""")
+
+    def test_shared_settings_unknown_action_is_not_permission(self):
+        self._shared_settings_case("""
+result = twin.allowed('rename a local variable')
+assert result['needs_owner_yes'] is None
+assert result['verdict'] == 'no_rule_found'
+""")
+
+    def test_shared_settings_filter_reload_precedes_chat(self):
+        self._shared_settings_case("""
+with open(twin.CFG_PATH) as f: settings = json.load(f)
+settings['never'] = 'synthetic copper'
+with open(twin.CFG_PATH, 'w') as f: json.dump(settings, f)
+result = twin.ask('synthetic copper status', 'recall')
+assert result['gate'] is True
+assert twin.DB.execute('select count(*) from chat').fetchone()[0] == 0
+""")
+
+    def test_shared_settings_startup_refuses_a_dangling_config_link(self):
+        self._shared_settings_case("""
+child = os.path.join(twin.HOME, 'child-store'); os.mkdir(child)
+outside = os.path.join(twin.HOME, 'outside-config.json')
+os.symlink(outside, os.path.join(child, 'config.json'))
+env = dict(os.environ, TWIN_HOME=child)
+result = __import__('subprocess').run([sys.executable, '-B', '-c', "import sys; sys.path.insert(0, 'twin'); import twin"],
+                                    cwd=os.getcwd(), env=env, capture_output=True, text=True, timeout=5)
+assert result.returncode != 0
+assert not os.path.exists(outside)
+""")
+
+    def test_shared_settings_startup_rejects_invalid_session_type(self):
+        self._shared_settings_case("""
+child = os.path.join(twin.HOME, 'child-store'); os.mkdir(child)
+with open(os.path.join(child, 'config.json'), 'w') as f: json.dump({'read_sessions': 'false'}, f)
+env = dict(os.environ, TWIN_HOME=child)
+result = __import__('subprocess').run([sys.executable, '-B', '-c', "import sys; sys.path.insert(0, 'twin'); import twin"],
+                                    cwd=os.getcwd(), env=env, capture_output=True, text=True, timeout=5)
+assert result.returncode != 0
+""")
+
+    def test_shared_settings_session_revocation_clears_cached_records(self):
+        self._shared_settings_case("""
+sessions = os.path.join(twin.HOME, '.claude', 'sessions')
+project = os.path.join(twin.HOME, '.claude', 'projects', 'sample-project')
+os.makedirs(sessions); os.makedirs(project)
+record = {'pid': os.getpid(), 'sessionId': 'sample-session', 'cwd': twin.HOME, 'status': 'busy'}
+with open(os.path.join(sessions, 'sample.json'), 'w') as f: json.dump(record, f)
+with open(os.path.join(project, 'sample-session.jsonl'), 'w') as f:
+    f.write(json.dumps({'aiTitle': 'Synthetic packing session'}, separators=(',', ':')))
+assert 'error' not in twin.config({'read_sessions': True})
+assert twin.cached('t', 100, twin.terminals)[0][0]['title'] == 'Synthetic packing session'
+before = os.stat(twin.CFG_PATH)
+with open(twin.CFG_PATH) as f: settings = json.load(f)
+settings['read_sessions'] = False
+with open(twin.CFG_PATH, 'w') as f: json.dump(settings, f)
+os.utime(twin.CFG_PATH, ns=(before.st_atime_ns, before.st_mtime_ns))
+with mock.patch.object(twin, '_regular_file', side_effect=AssertionError('no session file may be opened')):
+    assert twin.cached('t', 100, twin.terminals) == ([], 0)
+""")
+
+    def test_shared_settings_inflight_cache_uses_the_current_revision(self):
+        self._shared_settings_case("""
+calls = []
+def read_workspace():
+    calls.append(1)
+    if len(calls) == 1:
+        with open(twin.CFG_PATH) as f: settings = json.load(f)
+        settings['name'] = 'Nora'
+        with open(twin.CFG_PATH, 'w') as f: json.dump(settings, f)
+        return 'old workspace'
+    return 'current workspace'
+assert twin.cached('sample', 100, read_workspace) == 'current workspace'
+assert len(calls) == 2
+""")
+
+    def test_shared_settings_review_does_not_cross_source_roots(self):
+        self._shared_settings_case("""
+first = os.path.join(twin.HOME, 'first-notes'); second = os.path.join(twin.HOME, 'second-notes')
+for folder, title in ((first, 'Crates in the first source are blue.'), (second, 'Crates in the second source are green.')):
+    os.mkdir(folder)
+    with open(os.path.join(folder, 'crate.md'), 'w') as f:
+        f.write('---\\ndescription: ' + title + '\\narea: taste\\n---\\n\\n' + title)
+assert 'error' not in twin.config({'memory': first})
+old = next(e for e in twin.IX.get().e if e['src'] == 'crate.md')
+twin.DB.execute('insert or replace into review values(?,?,?)', (old['id'], 'outdated', twin.now())); twin.DB.commit(); twin.IX.sig = None
+assert old['id'] not in [e['id'] for e in twin.IX.get().e]
+assert 'error' not in twin.config({'memory': second})
+new = next(e for e in twin.IX.get().e if e['src'] == 'crate.md')
+assert new['id'] != old['id']
+assert new['title'] == 'Crates in the second source are green.'
+""")
+
     def test_a_matching_limit_is_never_cleared(self):
         r = twin.allowed("change the price on order 12")
         self.assertTrue(r["needs_owner_yes"])

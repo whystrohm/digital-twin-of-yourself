@@ -42,25 +42,56 @@ DEFAULT = {
     "voice_id": "", "voice_name": "", "model": "sonnet",
     "whisper": os.environ.get("TWIN_WHISPER_MODEL", ""),   # path to a whisper.cpp model file, for the microphone
 }
-if not os.path.exists(CFG_PATH):
-    with open(CFG_PATH, "w") as _f: json.dump(DEFAULT, _f, indent=2)
-with open(CFG_PATH) as _f: CFG = {**DEFAULT, **json.load(_f)}
-CFG_AT = [os.path.getmtime(CFG_PATH)]
+def _cfg_snapshot():
+    fd = os.open(CFG_PATH, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise ValueError("The settings must be a regular file.")
+        raw = f.read(1_000_001)
+    if len(raw) > 1_000_000: raise ValueError("The settings file is too large.")
+    new = json.loads(raw)
+    if not isinstance(new, dict): raise ValueError("The settings must be an object.")
+    return new, hashlib.sha256(raw).hexdigest()
+
+
+if not os.path.lexists(CFG_PATH):
+    _fd, _tmp = tempfile.mkstemp(prefix="config-", suffix=".tmp", dir=STORE)
+    try:
+        with os.fdopen(_fd, "w", encoding="utf-8") as _f:
+            json.dump(DEFAULT, _f, indent=2); _f.flush(); os.fsync(_f.fileno())
+        try: os.link(_tmp, CFG_PATH, follow_symlinks=False)
+        except FileExistsError: pass
+    finally: os.unlink(_tmp)
+_initial, _initial_revision = _cfg_snapshot()
+CFG = {**DEFAULT, **_initial}
+CFG_AT = [_initial_revision]
 
 
 def sync_cfg():
     """Another process may have changed the settings. Pick them up before answering, so a source that was removed stays removed."""
-    try: m = os.path.getmtime(CFG_PATH)
-    except OSError: return
-    if m == CFG_AT[0]: return
-    with open(CFG_PATH) as f: new = json.load(f)
-    CFG.clear(); CFG.update({**DEFAULT, **new}); CFG_AT[0] = m; IX.sig = None; _cache.clear(); refilter()
+    with LOCK:
+        new, revision = _cfg_snapshot()
+        if revision == CFG_AT[0]: return
+        candidate = {**DEFAULT, **new}
+        _validate_cfg_types(candidate)
+        _publish_cfg(candidate, revision)
 
 
-def save_cfg():
-    tmp = CFG_PATH + ".tmp"
-    with open(tmp, "w") as f: json.dump(CFG, f, indent=2)
-    os.replace(tmp, CFG_PATH); CFG_AT[0] = os.path.getmtime(CFG_PATH)
+def save_cfg(changes=None):
+    """Merge a change with the latest settings and publish only after the atomic write succeeds."""
+    with locked():
+        current, _ = _cfg_snapshot()
+        candidate = dict(CFG) if changes is None else {**DEFAULT, **current, **changes}
+        _validate_cfg_types(candidate)
+        payload = json.dumps(candidate, indent=2).encode("utf-8")
+        fd, tmp = tempfile.mkstemp(prefix="config-", suffix=".tmp", dir=STORE)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(payload); f.flush(); os.fsync(f.fileno())
+            os.replace(tmp, CFG_PATH)
+        finally:
+            if os.path.exists(tmp): os.unlink(tmp)
+        _publish_cfg(candidate, hashlib.sha256(payload).hexdigest())
+        return dict(CFG)
 
 
 class _Rx:
@@ -77,6 +108,26 @@ def refilter():
     ALLOW_F, ALLOW_T = _Rx(CFG.get("allow_files", ""), True), _Rx(CFG.get("allow_terminals", ""), True)
 
 
+def _validate_cfg_types(candidate):
+    for key, value in DEFAULT.items():
+        actual = candidate.get(key)
+        if isinstance(value, bool): valid = type(actual) is bool
+        elif isinstance(value, int): valid = type(actual) is int and 1 <= actual <= 65535
+        elif isinstance(value, list): valid = isinstance(actual, list) and all(isinstance(x, str) for x in actual)
+        else: valid = isinstance(actual, str)
+        if not valid: raise ValueError("Bad setting: " + key)
+    for key in ("sessions", "builder_python"):
+        if key in candidate and not isinstance(candidate[key], str): raise ValueError("Bad setting: " + key)
+    for key in ("never", "deny", "allow_files", "allow_terminals"): re.compile(candidate[key], re.I)
+
+
+def _publish_cfg(candidate, revision):
+    CFG.clear(); CFG.update(candidate); CFG_AT[0] = revision; refilter()
+    if "IX" in globals(): IX.sig = None
+    if "_cache" in globals(): _cache.clear()
+
+
+_validate_cfg_types(CFG)
 refilter()
 
 
@@ -87,6 +138,7 @@ class _Excl:
 EXCL = _Excl()
 TOKEN = secrets.token_urlsafe(24)
 LOCK = threading.RLock()
+_LOCK_STATE = threading.local()
 
 DB = sqlite3.connect(os.path.join(STORE, "twin.db"), check_same_thread=False)
 DB.row_factory = sqlite3.Row
@@ -113,13 +165,25 @@ NOTES = os.path.join(STORE, "notes"); os.makedirs(NOTES, exist_ok=True)
 def locked():
     """One writer at a time, across the page server and every MCP process."""
     with LOCK:
-        f = open(os.path.join(STORE, "lock"), "w")
+        if getattr(_LOCK_STATE, "depth", 0):
+            _LOCK_STATE.depth += 1
+            try: yield
+            finally: _LOCK_STATE.depth -= 1
+            return
+        fd = os.open(os.path.join(STORE, "lock"), os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        f = os.fdopen(fd, "r+b")
         try:
             try:
                 import fcntl; fcntl.flock(f, fcntl.LOCK_EX)
-            except ImportError: pass
+            except ImportError:
+                import msvcrt
+                if os.fstat(f.fileno()).st_size == 0: f.write(b"\0"); f.flush()
+                f.seek(0); msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+            _LOCK_STATE.depth = 1
             yield
-        finally: f.close()
+        finally:
+            _LOCK_STATE.depth = 0
+            f.close()
 
 
 def now(): return datetime.now().isoformat(timespec="seconds")
@@ -477,28 +541,37 @@ class Index:
     def get(self):
         with LOCK:
             sync_cfg()
-            sig = (CFG["memory"], CFG.get("rules"), file_signature(CFG["memory"]), file_signature(NOTES),
-                   DB.execute("select count(*) from taught").fetchone()[0],
-                   DB.execute("select count(*), coalesce(max(at), '') from review").fetchone()[:], DB.execute("select count(*), coalesce(max(at), '') from replaced").fetchone()[:])
+            try:
+                rs = confined_stat(CFG["rules"], os.path.dirname(CFG["rules"]))
+                rules_sig = (rs.st_mtime_ns, rs.st_size)
+            except (OSError, ValueError): rules_sig = None
+            sig = (CFG_AT[0], CFG["memory"], CFG.get("rules"), rules_sig,
+                   file_signature(CFG["memory"]), file_signature(NOTES),
+                   DB.execute("pragma data_version").fetchone()[0],
+                   tuple(tuple(r) for r in DB.execute("select key,verdict,at from review order by key")),
+                   tuple(tuple(r) for r in DB.execute("select * from replaced order by old_id")))
             if sig != self.sig:
-                self.e = load_entries(); self.df = {}; self.tf = []
-                for x in self.e:
+                entries = load_entries(); df = {}; tf = []
+                for x in entries:
                     c = {}
                     for w in toks(x["title"]) + toks(x["id"].replace("_", " ").replace("-", " ")): c[w] = c.get(w, 0) + 3
                     for w in toks(x["body"]): c[w] = c.get(w, 0) + 1
-                    self.tf.append(c)
-                    for w in c: self.df[w] = self.df.get(w, 0) + 1
+                    tf.append(c)
+                    for w in c: df[w] = df.get(w, 0) + 1
+                self.e, self.df, self.tf = entries, df, tf
                 self.sig = sig
             return self
 
     def search(self, q, k=6, project=""):
         import math
-        self.get(); N = len(self.e) or 1
+        with LOCK:
+            self.get(); entries, frequencies, document_frequencies = self.e, self.tf, self.df
+        N = len(entries) or 1
         qs = list(dict.fromkeys(toks(q)))
-        idf = {w: math.log(1 + (N - self.df.get(w, 0) + .5) / (self.df.get(w, 0) + .5)) for w in qs}
+        idf = {w: math.log(1 + (N - document_frequencies.get(w, 0) + .5) / (document_frequencies.get(w, 0) + .5)) for w in qs}
         tot = sum(idf.values()) or 1
         res = []
-        for x, c in zip(self.e, self.tf):
+        for x, c in zip(entries, frequencies):
             L = sum(c.values())
             s = sum(idf[w] * c[w] * 2.2 / (c[w] + 1.2 * (.4 + .6 * L / 220)) for w in qs if w in c)
             if s:
@@ -528,52 +601,97 @@ _cache = {}
 
 
 def cached(key, ttl, fn):
-    v = _cache.get(key)
-    if v and time.time() - v[0] < ttl: return v[1]
-    r = fn(); _cache[key] = (time.time(), r); return r
+    for _ in range(3):
+        with LOCK:
+            sync_cfg(); revision = CFG_AT[0]
+            v = _cache.get(key)
+            if v and v[2] == revision and time.time() - v[0] < ttl: return v[1]
+        result = fn()
+        with LOCK:
+            sync_cfg()
+            if CFG_AT[0] == revision:
+                _cache[key] = (time.time(), result, revision)
+                return result
+    raise RuntimeError("The settings changed while reading the workspace. Try again.")
 
 
 def terminals():
+    sync_cfg()
     out, hid = [], 0
-    if not CFG.get("read_sessions", True): return out, hid    # off unless the owner switched it on in Setup
-    for f in glob.glob(os.path.join(CFG.get("sessions") or os.path.join(HOME, ".claude/sessions"), "*.json")):
+    if not CFG.get("read_sessions", False): return out, hid
+    sessions_root = os.path.abspath(os.path.expanduser(CFG.get("sessions") or os.path.join(HOME, ".claude", "sessions")))
+    projects_root = os.path.join(HOME, ".claude", "projects")
+    if not inside(sessions_root, HOME) or not inside(projects_root, HOME): return out, hid
+    project_names = []
+    try:
+        with _directory(projects_root) as parent:
+            for name in sorted(os.listdir(parent)):
+                try: st = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                except OSError: continue
+                if stat.S_ISDIR(st.st_mode): project_names.append(name)
+    except (OSError, ValueError): pass
+    for base, _, _ in file_signature(sessions_root, suffix=".json"):
         try:
-            d = json.load(open(f)); os.kill(d["pid"], 0)
-        except Exception:
+            with _regular_file(os.path.join(sessions_root, base), sessions_root) as fd: raw = os.read(fd, 65_537)
+            if len(raw) > 65_536: continue
+            d = json.loads(raw)
+            if not isinstance(d, dict) or type(d.get("pid")) is not int or d["pid"] <= 0 or os.name == "nt": continue
+            sid = d.get("sessionId")
+            if not isinstance(sid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", sid): continue
+            if not isinstance(d.get("cwd"), str): continue
+            os.kill(d["pid"], 0)
+            mt = float(d.get("updatedAt", 0)) / 1000
+            started = float(d.get("startedAt", 0)) / 1000
+        except (OSError, ValueError, TypeError, OverflowError):
             continue
-        hits = glob.glob(os.path.join(HOME, ".claude/projects/*/%s.jsonl" % d["sessionId"]))
-        title, last, mt = "", "", d.get("updatedAt", 0) / 1000
-        if hits:
-            mt = max(mt, os.path.getmtime(hits[0]))
-            t = tail(hits[0])
+        title, last = "", ""
+        for project in project_names:
+            transcript = os.path.join(projects_root, project, sid + ".jsonl")
+            try:
+                with _regular_file(transcript, projects_root) as fd:
+                    st = os.fstat(fd); mt = max(mt, st.st_mtime)
+                    os.lseek(fd, max(0, st.st_size - 700_000), os.SEEK_SET)
+                    t = os.read(fd, 700_000).decode("utf-8", "replace")
+            except (OSError, ValueError): continue
             m = re.findall(r'"aiTitle":"((?:[^"\\]|\\.)*)"', t); title = m[-1] if m else ""
             m = re.findall(r'"customTitle":"((?:[^"\\]|\\.)*)"', t); title = m[-1] if m else title
             m = re.findall(r'"type":"last-prompt","lastPrompt":"((?:[^"\\]|\\.)*)"', t); last = m[-1] if m else ""
+            break
         try: title, last = json.loads('"%s"' % title), json.loads('"%s"' % last)
         except Exception: pass
-        if not ALLOW_T.search(title) or EXCL.search(title + " " + last):
+        name = title or str(d.get("name", "Session"))
+        if not ALLOW_T.search(title) or EXCL.search(name + " " + last + " " + d["cwd"]):
             hid += 1; continue
-        out.append({"pid": d["pid"], "title": redact(title) or d.get("name", "Session"), "last": redact(" ".join(last.split()))[:220],
+        out.append({"pid": d["pid"], "title": redact(name), "last": redact(" ".join(last.split()))[:220],
                     "status": d.get("status", "idle"), "cwd": d["cwd"].replace(HOME, "~"), "mins": int((time.time() - mt) / 60),
-                    "days": round((time.time() - d.get("startedAt", 0) / 1000) / 86400, 1)})
+                    "days": round((time.time() - started) / 86400, 1)})
     return sorted(out, key=lambda x: (x["status"] != "busy", x["mins"])), hid
 
 
+def repo_identity(path):
+    return os.path.realpath(os.path.join(HOME, os.path.expanduser(path)))
+
+
 def repos():
+    sync_cfg()
     out, since = [], (datetime.now() - timedelta(days=7)).date().isoformat()
-    for r in CFG["repos"]:
-        p = os.path.join(HOME, r)
-        if not os.path.exists(os.path.join(p, ".git")): continue
+    for r in list(CFG["repos"]):
+        p = repo_identity(r)
+        if EXCL.search(r) or not os.path.exists(os.path.join(p, ".git")): continue
         up = git(["rev-parse", "--abbrev-ref", "@{u}"], p)
         ahead = git(["rev-list", "--count", "@{u}..HEAD"], p) if up else ""
         dirty = len([l for l in git(["status", "--porcelain"], p).splitlines() if l])
         last = git(["log", "-1", "--format=%cI|%s"], p).split("|", 1)
         main = next((b for b in ("origin/HEAD", "origin/main", "origin/master") if git(["rev-parse", "-q", "--verify", b], p)), "")
         if main:
-            for l in git(["log", main, "--since=30.days", "--format=%h|%cI|%s", "-60"], p).splitlines():
-                h, at, s = l.split("|", 2)
+            for l in git(["log", main, "--since=30.days", "--format=%H|%cI|%s", "-60"], p).splitlines():
+                parts = l.split("|", 2)
+                if len(parts) != 3: continue
+                h, at, s = parts
                 if not EXCL.search(s) and not s.startswith("Merge "):
-                    with LOCK: DB.execute("insert or ignore into shipped values(?,?,?,?)", (h, os.path.basename(r), at, redact(s)))
+                    key = hashlib.sha256((p + "\0" + h).encode()).hexdigest()
+                    with LOCK:
+                        DB.execute("insert or ignore into shipped values(?,?,?,?)", (key, p, at, redact(s))); DB.commit()
         out.append({"name": os.path.basename(r), "ahead": int(ahead or 0), "tracked": bool(up), "dirty": dirty,
                     "branch": git(["branch", "--show-current"], p), "last": last[0][:10], "subject": "" if EXCL.search(last[-1]) else redact(last[-1])[:100]})
     with LOCK: DB.commit()
@@ -581,10 +699,13 @@ def repos():
 
 
 def shipped(days=7):
-    names = [os.path.basename(r) for r in CFG["repos"]]
-    if not names: return []
-    since = (datetime.now() - timedelta(days=days)).isoformat()
-    return [dict(r) for r in DB.execute("select repo,at,subject from shipped where at>=? and repo in (%s) order by at desc limit 400" % ",".join("?" * len(names)), [since] + names)]
+    with LOCK:
+        sync_cfg()
+        sources = list(dict.fromkeys(repo_identity(r) for r in CFG["repos"] if not EXCL.search(r)))
+        if not sources: return []
+        since = (datetime.now() - timedelta(days=days)).isoformat()
+        rows = list(DB.execute("select repo,at,subject from shipped where at>=? and repo in (%s) order by at desc limit 400" % ",".join("?" * len(sources)), [since] + sources))
+        return [dict(repo=os.path.basename(r["repo"]), at=r["at"], subject=r["subject"]) for r in rows if not EXCL.search(r["subject"])]
 
 
 def priorities():
@@ -608,6 +729,8 @@ POLITE = re.compile(r"^\W*(?:(?:please|could you|can you|would you|will you|go a
 
 def gated(q):
     """Chat and the MCP tool share this: is it a request to act that needs the owner's yes?"""
+    sync_cfg()
+    if HARD.search(q): return True
     if re.search(r"^\W*(should|when|why|how|what|who|where|is|are|do|does|did)\b", q, re.I): return False
     q2 = POLITE.sub("", q).rstrip(" ?")
     return bool(GATE.match(q2) or (ACT.match(q2) and allowed(q2)["matching_limits"]))
@@ -727,6 +850,7 @@ def think(q, ev, hist):
 
 
 def ask(q, mode):
+    sync_cfg()
     q = q.strip()[:2000]
     if HARD.search(q): return {"gate": True, "sources": [], "level": "limit", "text": "That is outside this workspace. I do not read it, keep it or send it."}
     hist = [dict(r) for r in DB.execute("select who,text from chat order by id desc limit 8")][::-1]
@@ -937,6 +1061,9 @@ def settle(pid, accept, replace=False, uid=None, old_id=None):
 
 def allowed(action):
     """Is this action something the twin's owner must approve? Code decides the gate; notes give the reason."""
+    sync_cfg()
+    if HARD.search(action):
+        return {"needs_owner_yes": True, "verdict": "outside_workspace", "why": "That is outside this workspace.", "matching_limits": [], "note": "Advice only. The twin cannot stop another agent from acting."}
     w = set(toks(action)); lim = [e for e in IX.get().e if e["area"] == "limits"]
     hits = sorted(((len(w & set(toks(e["title"]))), e) for e in lim), key=lambda x: -x[0])
     gate = bool(re.search(r"\b(push|deploy|publish|send|email|post|pay|buy|spend|purchase|delete|remove|drop|merge|force|rm)\w*\b", action, re.I))
@@ -944,7 +1071,7 @@ def allowed(action):
     why = ("Pushing, publishing, sending, spending and deleting always need the owner's yes." if gate else
            "One of the owner's limits may apply. Ask first." if match else
            "No matching limit was found. This is advice, not permission. When unsure, ask the owner.")
-    return {"needs_owner_yes": gate or bool(match), "verdict": "ask_the_owner" if gate or match else "no_rule_found", "why": why, "matching_limits": match, "note": "Advice only. The twin cannot stop another agent from acting."}
+    return {"needs_owner_yes": True if gate or match else None, "verdict": "ask_the_owner" if gate or match else "no_rule_found", "why": why, "matching_limits": match, "note": "Advice only. The twin cannot stop another agent from acting."}
 
 
 KEYS = r"(sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[0-9A-Za-z_-]{30,})"
@@ -1037,45 +1164,65 @@ def scan_repos():
 
 def config(d):
     """Reads the settings, or changes them. A change is checked whole first. If any part is wrong, nothing is applied."""
-    new = dict(CFG); err = None; str_ = lambda k: isinstance(d.get(k), str)
     if not isinstance(d, dict): return {"error": "Bad request."}
-    if "name" in d:
-        if not str_("name") or not d["name"].strip(): err = "The name must be text."
-        else: new["name"] = re.sub(r"[^\w .'-]", "", d["name"].strip())[:14] or new["name"]
-    if "read_sessions" in d:
-        if d["read_sessions"] is True or d["read_sessions"] is False: new["read_sessions"] = d["read_sessions"]
-        else: err = "The session setting must be on or off."
-    for key, kind in (("rules", "rules"), ("persona", "profile")):
-        if d.get(key):
-            rp = os.path.realpath(os.path.expanduser(str(d[key]).strip()))
-            if not (str_(key) and rp.startswith(HOME + os.sep) and os.path.isfile(rp)) or HARD.search(rp): err = "The voice %s file was not found inside your home folder." % kind
-            elif key == "rules":
-                with tempfile.TemporaryDirectory() as td:
-                    dp = os.path.join(td, "d.md")
-                    with open(dp, "w") as f: f.write("ok.\n")
-                    if subprocess.run([sys.executable, CFG["checker"], "--rules", rp, dp], capture_output=True, timeout=20).returncode == 2: err = "That is not a valid twin rules file. Build one with the voice tools first."
-            if not err: new[key] = rp
-    if "voice_id" in d:
-        if str_("voice_id") and (d["voice_id"] in ("", "system") or re.fullmatch(r"[A-Za-z0-9]{10,40}", d["voice_id"])):
-            new["voice_id"] = d["voice_id"]; new["voice_name"] = next((v["name"] for v in voices() if v["voice_id"] == d["voice_id"]), "")
-        else: err = "That voice was not recognised."
-    if "memory" in d:
-        p = os.path.realpath(os.path.expanduser(d["memory"].strip())) if str_("memory") else ""
-        if not p or not os.path.isdir(p): err = "That folder does not exist."
-        elif not p.startswith(HOME + os.sep) or p == HOME or HARD.search(p): err = "Pick one notes folder inside your home folder."
-        else:
-            new["memory"] = p; new["workspace"] = os.path.basename(p)[:24]
-    if "repos" in d:
-        rs = [os.path.realpath(os.path.expanduser(x.strip())) for x in re.split(r"[,\n]", d["repos"]) if x.strip()] if isinstance(d["repos"], str) else None
-        bad = None if rs is None else [x for x in rs if not os.path.exists(os.path.join(x, ".git")) or not x.startswith(HOME + os.sep)]
-        if rs is None or bad: err = "Not a git repo inside your home folder: " + (bad[0].replace(HOME, "~") if bad else "")
-        else: new["repos"] = rs[:12]
-    if err: return {"error": err}
-    if d:
+    accepted = {"name", "read_sessions", "rules", "persona", "voice_id", "memory", "repos", "never", "deny", "allow_files", "allow_terminals"}
+    if set(d) - accepted: return {"error": "Unknown setting."}
+    try:
         with locked():
-            if new.get("rules") != CFG.get("rules"): audit_log("voice rules set", new["rules"].replace(HOME, "~"))
-            if new.get("read_sessions") != CFG.get("read_sessions"): audit_log("session list turned " + ("on" if new.get("read_sessions") else "off"))
-            CFG.clear(); CFG.update(new); save_cfg(); IX.sig = None; _cache.clear(); globals().get("refilter", lambda: None)()
+            sync_cfg()
+            before = dict(CFG); new = dict(CFG)
+            if "name" in d:
+                if not isinstance(d["name"], str) or not d["name"].strip(): raise ValueError("The name must be text.")
+                new["name"] = re.sub(r"[^\w .'-]", "", d["name"].strip())[:14]
+                if not new["name"]: raise ValueError("The name must contain letters or numbers.")
+            if "read_sessions" in d:
+                if type(d["read_sessions"]) is not bool: raise ValueError("The session setting must be on or off.")
+                new["read_sessions"] = d["read_sessions"]
+            for key in ("never", "deny", "allow_files", "allow_terminals"):
+                if key in d:
+                    if not isinstance(d[key], str): raise ValueError("The filter must be text.")
+                    re.compile(d[key], re.I); new[key] = d[key]
+            for key, kind in (("rules", "rules"), ("persona", "profile")):
+                if key not in d: continue
+                if not isinstance(d[key], str): raise ValueError("The voice %s path must be text." % kind)
+                if key == "persona" and not d[key].strip(): new[key] = ""; continue
+                rp = os.path.realpath(os.path.expanduser(d[key].strip()))
+                if not rp.startswith(os.path.realpath(HOME) + os.sep) or not os.path.isfile(rp) or HARD.search(rp):
+                    raise ValueError("The voice %s file was not found inside your home folder." % kind)
+                if key == "rules":
+                    with tempfile.TemporaryDirectory() as td:
+                        dp = os.path.join(td, "d.md")
+                        with open(dp, "w") as f: f.write("ok.\n")
+                        result = subprocess.run([sys.executable, CFG["checker"], "--rules", rp, dp], capture_output=True, timeout=20)
+                        if result.returncode not in (0, 1): raise ValueError("That is not a valid twin rules file. Build one with the voice tools first.")
+                new[key] = rp
+            if "voice_id" in d:
+                vid = d["voice_id"]
+                if not isinstance(vid, str) or not (vid in ("", "system") or re.fullmatch(r"[A-Za-z0-9]{10,40}", vid)):
+                    raise ValueError("That voice was not recognised.")
+                new["voice_id"] = vid
+                new["voice_name"] = "System voice" if vid == "system" else next((v["name"] for v in voices() if v["voice_id"] == vid), "") if vid else ""
+            if "memory" in d:
+                if not isinstance(d["memory"], str): raise ValueError("The notes path must be text.")
+                p = os.path.realpath(os.path.expanduser(d["memory"].strip()))
+                if not os.path.isdir(p): raise ValueError("That folder does not exist.")
+                if not p.startswith(os.path.realpath(HOME) + os.sep) or HARD.search(p): raise ValueError("Pick one notes folder inside your home folder.")
+                new["memory"] = p; new["workspace"] = os.path.basename(p)[:24]
+            if "repos" in d:
+                if not isinstance(d["repos"], str): raise ValueError("The repo list must be text.")
+                rs = list(dict.fromkeys(os.path.realpath(os.path.expanduser(x.strip())) for x in re.split(r"[,\n]", d["repos"]) if x.strip()))
+                for p in rs:
+                    if not os.path.exists(os.path.join(p, ".git")) or not p.startswith(os.path.realpath(HOME) + os.sep) or HARD.search(p):
+                        raise ValueError("Not a git repo inside your home folder: " + p.replace(HOME, "~"))
+                new["repos"] = rs[:12]
+            _validate_cfg_types(new)
+            changes = {k: v for k, v in new.items() if v != before.get(k)}
+            if changes:
+                save_cfg(changes)
+                if "rules" in changes: audit_log("voice rules set", new["rules"].replace(HOME, "~"))
+                if "read_sessions" in changes: audit_log("session list turned " + ("on" if new["read_sessions"] else "off"))
+    except (OSError, ValueError, re.error, subprocess.SubprocessError) as e:
+        return {"error": str(e) if isinstance(e, ValueError) else "The settings could not be saved. Try again."}
     try:
         with open(head_file("head.json")) as f: pts = json.load(f)["points"]
     except Exception: pts = 0
@@ -1163,7 +1310,7 @@ def clone_voice(raw, path):
         return {"error": str(msg)[:200]}
     except Exception:
         return {"error": "ElevenLabs did not answer."}
-    CFG["voice_id"], CFG["voice_name"] = vid, name; save_cfg()
+    save_cfg({"voice_id": vid, "voice_name": name})
     audit_log("voice consent ticked, voice cloned", name)
     return {"voice_id": vid, "voice_name": name}
 
