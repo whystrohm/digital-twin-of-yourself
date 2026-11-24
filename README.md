@@ -4,9 +4,9 @@
 
 A twin of you that runs on your machine. It remembers how you decide, what you like, how you write and what it must never do. You can see it, ask it and correct it, and every coding session you run can ask it first.
 
-![DIGITAL TWIN. One photo becomes a twin made of dots. AI forgets you: it remembers. AI sounds generic: it checks. AI acts alone: it asks first. Then three twins stand together. Build yours](assets/twin-cover.webp)
+![DIGITAL TWIN. A chat bar types "build my twin" and a head made of dots forms as it learns decisions, taste, voice, work and limits. It answers a question, fails a hedged draft, and stops at a limit. Build yours](assets/twin-cover.webp)
 
-*Three made-up people: generated faces, made-up notes. The draft check and the limit stop are the tool's real output on that sample.*
+*A made-up person: a generated face and made-up notes. The answer, the draft check and the limit stop are the tool's real output on that sample.*
 
 ![The page: the head with one note open, showing the note, the reason and the date](assets/twin.png)
 
