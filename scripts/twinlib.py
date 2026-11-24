@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import statistics
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -344,9 +345,40 @@ def list_text_files(root):
     return sorted(found)
 
 
-def read_text(path):
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
-        return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+def read_text(path, root=None):
+    """Read text. A root requires a regular file opened beneath that directory.
+
+    Bounded reads reject links and require directory-relative no-follow opens.
+    Platforms without those primitives fail closed for this optional mode.
+    """
+    if root is None:
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+            return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+    root, path = os.path.abspath(root), os.path.abspath(path)
+    if os.path.commonpath((root, path)) != root or path == root or os.path.islink(root):
+        raise ValueError("The sample must be a regular file beneath the selected folder.")
+    if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("Bounded sample reads are unavailable on this platform.")
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    directory = os.open(root, flags | os.O_DIRECTORY)
+    try:
+        parts = os.path.relpath(path, root).split(os.sep)
+        for part in parts[:-1]:
+            child = os.open(part, flags | os.O_DIRECTORY, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        fd = os.open(parts[-1], flags | getattr(os, "O_NONBLOCK", 0), dir_fd=directory)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("The sample is not a regular file.")
+            with os.fdopen(fd, "r", encoding="utf-8-sig", errors="replace") as fh:
+                fd = None
+                return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+        finally:
+            if fd is not None:
+                os.close(fd)
+    finally:
+        os.close(directory)
 
 
 def sha256_file(path):

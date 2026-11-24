@@ -1,79 +1,178 @@
 #!/usr/bin/env python3
-"""The learning loop, end to end, with real fresh sessions.
+"""One paid smoke check of the learning loop, using six fresh Claude CLI sessions.
 
-  1. A fresh session with no twin is asked something only the owner knows.
-  2. A fresh session with the twin is asked the same thing. The twin has no note yet.
-  3. The owner corrects it. A session proposes the note. The owner accepts it.
-  4. Another fresh session is asked again. It should use the note and name its source.
-  5. The owner changes the decision. The new note replaces the old one.
-  6. Another fresh session is asked again. It should use the new decision only.
+Run explicitly: python3 validation/twin_loop.py [--out a-new-result.md]
+It uses your Claude account and sends synthetic prompts and sample notes to Claude.
+TWIN_HOME and the working directory are temporary. Your CLI credentials still come
+from your normal account. Importing this module never starts a session.
 
-This calls your own `claude` CLI seven times, so it uses your Claude account. It runs on a throwaway data
-folder and the made-up sample notes. Nothing is written to your real twin.
-
-  python3 validation/twin_loop.py                 prints the transcript
-  python3 validation/twin_loop.py --out FILE.md   also writes it as Markdown
-
-The "owner accepts" steps are done by calling the same function the page's Accept and Replace buttons call.
-A step counts as expected only if its check passes. The script exits 1 if any check fails.
+Owner actions use the same acceptance function as the page. Checks cover exact
+active notes, source citations and per-session tool-count changes. This is a small
+smoke check, not a measure of voice fidelity or time saved.
 """
-import atexit, json, os, shutil, subprocess, sys, tempfile
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOME_ = tempfile.mkdtemp(prefix="twin-loop-")
-atexit.register(lambda: shutil.rmtree(HOME_, ignore_errors=True))      # removed on every exit path
-ENV = dict(os.environ, TWIN_HOME=HOME_)
-MCP = os.path.join(HOME_, "mcp.json")
-with open(MCP, "w") as f:
-    json.dump({"mcpServers": {"twin": {"command": sys.executable, "args": [os.path.join(ROOT, "twin", "twin_mcp.py")], "env": {"TWIN_HOME": HOME_}}}}, f)
 TOOLS = "mcp__twin__twin_recall,mcp__twin__twin_propose_note,mcp__twin__twin_allowed"
-Q = "What colour do we print our shipping labels in? Answer in one short line. If you used a note, name its source. If you do not know, say so plainly and do not guess."
-log = []
+QUESTION = ('What colour do we print our shipping labels in? Return exactly one JSON object with '
+            '"colour" ("unknown", "black", or "dark green"), "note" (the exact note text), '
+            'and "source" (the exact source returned by twin_recall). For unknown use empty '
+            'note and source strings. Do not guess. Do not put the JSON in a code fence.')
+BLACK = "Shipping labels are printed in black only."
+GREEN = "Shipping labels are printed in dark green."
 
 
-def session(prompt, twin=True):
-    cmd = ["claude", "-p", "--model", "sonnet", "--setting-sources", "", "--no-session-persistence", "--strict-mcp-config"]
-    cmd += ["--mcp-config", MCP, "--allowedTools", TOOLS] if twin else ["--tools", ""]
-    env = {k: v for k, v in ENV.items() if not k.startswith(("CLAUDECODE", "CLAUDE_CODE"))}
-    r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=240, cwd=HOME_, env=env)
-    if r.returncode != 0: return "(the session failed: exit %d)" % r.returncode
-    return " ".join(r.stdout.split()) or "(no answer)"
+def answer_matches(answer, colour, note=None):
+    """Check explicit fields, not words that may occur in a negated answer."""
+    if not isinstance(answer, dict) or answer.get("colour") != colour:
+        return False
+    if note is None:
+        return answer.get("note") == "" and answer.get("source") == ""
+    return answer.get("note") == note["title"] and answer.get("source") == note["src"]
 
 
-def owner(code):
-    """Runs one owner action against the throwaway twin."""
-    return subprocess.run([sys.executable, "-c", "import sys,json;sys.argv=['x'];sys.path.insert(0,%r);import twin\n%s" % (os.path.join(ROOT, "twin"), code)],
-                          capture_output=True, text=True, env=ENV, timeout=60).stdout.strip()
+def checked_run(cmd, **kwargs):
+    result = subprocess.run(cmd, capture_output=True, text=True, **kwargs)
+    if result.returncode:
+        raise RuntimeError("Child command failed with exit %d; no result was accepted." % result.returncode)
+    return result.stdout.strip()
 
 
-def step(title, text, check=None):
-    ok = None if check is None else bool(check(text.lower()))
-    log.append((title, text, ok)); print("\n## %s\n%s%s" % (title, text, "" if ok is None else "\n-> %s" % ("as expected" if ok else "NOT as expected")))
+class LoopProof:
+    def __init__(self, home, model):
+        self.home, self.model, self.log = home, model, []
+        self.env = {k: v for k, v in os.environ.items()
+                    if not k.startswith(("CLAUDECODE", "CLAUDE_CODE")) and k not in ("FAL_KEY", "ELEVENLABS_API_KEY")}
+        self.env["TWIN_HOME"] = home
+        self.mcp = os.path.join(home, "mcp.json")
+        with open(self.mcp, "w", encoding="utf-8") as f:
+            json.dump({"mcpServers": {"twin": {"command": sys.executable,
+                      "args": [os.path.join(ROOT, "twin", "twin_mcp.py")], "env": {"TWIN_HOME": home}}}}, f)
+        with open(os.path.join(home, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"memory": os.path.join(ROOT, "examples", "twin-notes"),
+                       "repos": [], "read_sessions": False}, f)
+
+    def session(self, prompt, twin=True):
+        cmd = ["claude", "-p", "--model", self.model, "--setting-sources", "",
+               "--no-session-persistence", "--strict-mcp-config", "--tools", ""]
+        if twin:
+            cmd += ["--mcp-config", self.mcp, "--allowedTools", TOOLS]
+        text = checked_run(cmd, input=prompt, timeout=240, cwd=self.home, env=self.env)
+        try:
+            answer = json.loads(text)
+        except (ValueError, TypeError):
+            raise RuntimeError("The session did not return the required JSON object.")
+        if not isinstance(answer, dict):
+            raise RuntimeError("The session result was not a JSON object.")
+        return answer
+
+    def owner(self, code):
+        """Only constant owner operations run here, against the temporary store."""
+        program = ("import sys,json;sys.argv=['x'];sys.path.insert(0,%r);import twin\n" % os.path.join(ROOT, "twin"))
+        program += code + "\nprint(json.dumps(result))\ntwin.DB.close()\n"
+        text = checked_run([sys.executable, "-c", program], timeout=60, cwd=self.home, env=self.env)
+        try:
+            return json.loads(text)
+        except (ValueError, TypeError):
+            raise RuntimeError("The owner action did not return valid JSON.")
+
+    def snapshot(self):
+        return self.owner("result={'active':[{k:e[k] for k in ('id','title','src')} for e in twin.IX.get().e "
+                          "if 'shipping labels' in e['title'].lower()], 'proposals':twin.proposals(), "
+                          "'clients':twin.clients()}")
+
+    @staticmethod
+    def used_tool(before, after, tool):
+        prior = sum(c["calls"] for c in before["clients"])
+        return (sum(c["calls"] for c in after["clients"]) > prior
+                and any(c["last_tool"] == tool for c in after["clients"]))
+
+    def step(self, title, data, passed):
+        self.log.append((title, data, bool(passed)))
+        print("\n## %s\n%s\n%s" % (title, json.dumps(data, ensure_ascii=False, indent=2),
+                                       "As expected." if passed else "Not as expected."))
+
+    def propose(self, text):
+        before = self.snapshot()
+        reply = self.session("The owner just made this decision. Call twin_propose_note exactly once with "
+                             "area taste, scope personal, and this exact text: %s. Then return only "
+                             'a JSON object with "proposed": true.' % json.dumps(text))
+        after = self.snapshot()
+        pending = after["proposals"]
+        if (not self.used_tool(before, after, "twin_propose_note") or len(pending) != 1
+                or pending[0]["text"] != text or pending[0]["area"] != "taste"
+                or pending[0].get("scope") != "personal"):
+            raise RuntimeError("No single matching proposal was observed. Nothing was accepted.")
+        self.step("Session proposes the owner's decision", {"reply": reply, "proposal": pending[0]}, True)
+        return pending[0]
+
+    def accept(self, proposal, old=None):
+        code = "result=twin.settle(%r,True,%r,%r,%r)" % (
+            proposal["id"], bool(old), proposal["uid"], old["id"] if old else None)
+        result = self.owner(code)
+        state = self.snapshot()
+        active = state["active"]
+        good = (result == {"ok": 1} and len(active) == 1
+                and active[0]["title"] == proposal["text"] and not state["proposals"])
+        if old:
+            good = good and bool(active) and active[0]["id"] != old["id"]
+        self.step("Owner accepts the exact reviewed proposal", {"result": result, "state": state}, good)
+        if not good:
+            raise RuntimeError("Acceptance did not leave exactly one expected active note.")
+        return active[0]
+
+    def recall(self, colour, note=None):
+        before = self.snapshot()
+        answer = self.session("Call twin_recall for the question, then answer it. " + QUESTION)
+        after = self.snapshot()
+        good = self.used_tool(before, after, "twin_recall") and answer_matches(answer, colour, note)
+        good = good and after["active"] == ([note] if note else [])
+        self.step("Fresh session recalls " + colour, {"answer": answer, "state": after}, good)
+
+    def run(self):
+        answer = self.session("You have no tools or files. " + QUESTION, twin=False)
+        self.step("Fresh session without the twin", answer, answer_matches(answer, "unknown"))
+        self.recall("unknown")
+        black = self.accept(self.propose(BLACK))
+        self.recall("black", black)
+        green = self.accept(self.propose(GREEN), black)
+        self.recall("dark green", green)
+        return all(ok for _, _, ok in self.log)
 
 
-unsure = lambda t: any(w in t for w in ("don't know", "do not know", "no note", "not enough", "no evidence", "don't have", "do not have", "cannot", "can't", "no information", "unknown", "not sure", "no record"))
-step("1. Fresh session, no twin", session("You have no tools and no files in this session. " + Q, twin=False), unsure)
-step("2. Fresh session, with the twin, before any note exists", session("Use the twin tools. " + Q), unsure)
-step("3a. The owner corrects it, and a session proposes the note",
-     session("The owner just told you: our shipping labels are printed in black only. Propose that to the twin as a taste note with twin_propose_note. Then reply with one line saying what you proposed."))
-step("3b. The owner accepts it", owner("p=twin.proposals();print(p[0]['text'] if p else 'no proposal');twin.settle(p[0]['id'],True) if p else None"), lambda t: "black" in t)
-step("4. Another fresh session", session("Use the twin tools. " + Q), lambda t: "black" in t)
-step("5a. The owner changes the decision, and a session proposes it",
-     session("The owner just told you: from now on our shipping labels are printed in dark green, not black. Propose that to the twin as a taste note with twin_propose_note. Then reply with one line saying what you proposed."))
-step("5b. The owner picks Replace the old one", owner("p=twin.proposals();print((p[0]['text']+' | clashes with: '+str((p[0]['conflict'] or {}).get('title'))) if p else 'no proposal');print(twin.settle(p[0]['id'],True,True)) if p else None"), lambda t: "clashes with: shipping" in t and "'ok': 1" in t)
-step("6. Another fresh session", session("Use the twin tools. " + Q), lambda t: "green" in t[:60] and not t.startswith("black"))      # the answer leads with the new decision; 6b checks what is stored
-step("6b. What the twin holds now", owner("print(' | '.join(e['title'] for e in twin.IX.get().e if 'label' in e['title'].lower()))"), lambda t: "green" in t and "black only" not in t)
-step("The twin's own log", owner("print(chr(10).join(r['at']+' | '+r['action']+' | '+r['detail'] for r in twin.DB.execute('select at,action,detail from log order by id')))"))
-step("Who asked", owner("print(json.dumps([{k:c[k] for k in ('name','last_tool','calls')} for c in twin.clients()]))"))
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", help="write a Markdown transcript to this explicit path")
+    parser.add_argument("--model", default="sonnet", help="requested Claude CLI model or alias")
+    args = parser.parse_args(argv)
+    with tempfile.TemporaryDirectory(prefix="twin-loop-") as home:
+        proof = LoopProof(home, args.model)
+        try:
+            passed = proof.run()
+        except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
+            proof.step("Run failed", {"error": str(exc)}, False)
+            passed = False
+        summary = "%d of %d checked steps came out as expected." % (sum(ok for _, _, ok in proof.log), len(proof.log))
+        print("\n" + summary)
+        if args.out:
+            with open(__file__, "rb") as source:
+                source_hash = hashlib.sha256(source.read()).hexdigest()
+            with open(args.out, "w", encoding="utf-8") as f:
+                f.write("# Learning-loop smoke check\n\nSix fresh sessions on synthetic notes. Requested model: %s.\n"
+                        "Harness SHA-256: %s. Python: %s.\n"
+                        "Per-step tool counts and exact note state are recorded below. This is not a fidelity benchmark.\n\n**%s**\n"
+                        % (args.model, source_hash, sys.version.split()[0], summary))
+                for title, data, ok in proof.log:
+                    f.write("\n## %s\n\n```json\n%s\n```\n\n%s\n" % (
+                        title, json.dumps(data, ensure_ascii=False, indent=2), "As expected." if ok else "Not as expected."))
+        return 0 if passed else 1
 
-checked = [ok for _, _, ok in log if ok is not None]
-summary = "%d of %d checked steps came out as expected." % (sum(checked), len(checked))
-print("\n" + summary)
-if "--out" in sys.argv:
-    with open(sys.argv[sys.argv.index("--out") + 1], "w") as f:
-        f.write("# The learning loop, one real run\n\nEvery answer below is the real output of `validation/twin_loop.py`: fresh `claude` sessions on a throwaway twin with the made-up sample notes. One run. A model's wording varies from run to run.\n\n**%s**\n" % summary)
-        for title, text, ok in log:
-            f.write("\n## %s\n\n```\n%s\n```\n%s" % (title, text, "" if ok is None else ("\nAs expected.\n" if ok else "\nNot as expected.\n")))
-import shutil
-shutil.rmtree(HOME_, ignore_errors=True)
-sys.exit(0 if all(checked) and checked else 1)
+
+if __name__ == "__main__":
+    sys.exit(main())

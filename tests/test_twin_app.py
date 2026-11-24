@@ -2,6 +2,116 @@
 import json, os, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+class ValidationSafetyTests(unittest.TestCase):
+    @staticmethod
+    def load_validation(name):
+        import contextlib, importlib.util, io
+        from unittest import mock
+        spec = importlib.util.spec_from_file_location("audit_" + name, os.path.join(ROOT, "validation", name + ".py"))
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch("subprocess.run", return_value=subprocess.CompletedProcess([], 1, "", "")) as child:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                try: spec.loader.exec_module(module)
+                except SystemExit: pass
+        return module, child.call_count
+
+    def test_importing_the_loop_does_not_start_paid_sessions(self):
+        _, calls = self.load_validation("twin_loop")
+        self.assertEqual(calls, 0)
+
+    def test_a_failed_proof_child_fails_and_removes_its_data(self):
+        import contextlib, io
+        from unittest import mock
+        module, _ = self.load_validation("twin_loop")
+        self.assertTrue(callable(getattr(module, "main", None)))
+        homes = []
+        def child(cmd, **kw):
+            homes.append(kw["cwd"])
+            return subprocess.CompletedProcess(cmd, 3, "", "not a result")
+        with mock.patch.object(module.subprocess, "run", side_effect=child):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertNotEqual(module.main([]), 0)
+        self.assertTrue(homes)
+        self.assertTrue(all(not os.path.exists(p) for p in homes))
+
+    def test_proof_answers_require_the_current_fact_and_source(self):
+        module, _ = self.load_validation("twin_loop")
+        self.assertTrue(callable(getattr(module, "answer_matches", None)))
+        note = {"title": "Shipping labels are printed in dark green.", "src": "owner correction"}
+        self.assertTrue(module.answer_matches({"colour": "dark green", "note": note["title"], "source": "owner correction"}, "dark green", note))
+        self.assertFalse(module.answer_matches({"colour": "not green, use black", "note": note["title"], "source": "owner correction"}, "dark green", note))
+        self.assertFalse(module.answer_matches({"colour": "dark green", "note": "Shipping labels are printed in black only.", "source": "owner correction"}, "dark green", note))
+        self.assertFalse(module.answer_matches({"colour": "dark green", "note": note["title"], "source": "made up"}, "dark green", note))
+
+    def test_the_proof_checks_real_owner_state_with_an_offline_client(self):
+        import contextlib, io
+        from unittest import mock
+        module, _ = self.load_validation("twin_loop")
+        self.assertTrue(callable(getattr(module, "main", None)))
+        real_run = subprocess.run
+        def child(cmd, **kw):
+            if cmd[0] != "claude":
+                return real_run(cmd, **kw)
+            answer = {"colour": "unknown", "note": "", "source": ""}
+            if "--mcp-config" in cmd:
+                proposing = "twin_propose_note" in kw["input"]
+                text = module.GREEN if module.GREEN in kw["input"] else module.BLACK
+                name = "twin_propose_note" if proposing else "twin_recall"
+                args = {"text": text, "area": "taste", "scope": "personal"} if proposing else {"question": "what colour shipping labels"}
+                messages = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "offline-fixture"}}},
+                            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": name, "arguments": args}}]
+                run = real_run([sys.executable, os.path.join(ROOT, "twin", "twin_mcp.py")],
+                               input="\n".join(json.dumps(m) for m in messages) + "\n", text=True,
+                               capture_output=True, timeout=60, cwd=kw["cwd"], env=kw["env"])
+                if run.returncode:
+                    return run
+                response = json.loads(json.loads(run.stdout.splitlines()[-1])["result"]["content"][0]["text"])
+                if proposing:
+                    answer = {"proposed": response["proposed"]}
+                else:
+                    notes = [n for n in response.get("notes", []) if n["note"] in (module.BLACK, module.GREEN)]
+                    if notes:
+                        note = notes[0]
+                        answer = {"colour": "dark green" if note["note"] == module.GREEN else "black", "note": note["note"], "source": note["source"]}
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(answer), "")
+        output = io.StringIO()
+        with mock.patch.object(module.subprocess, "run", side_effect=child):
+            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+                code = module.main([])
+        self.assertEqual(code, 0, output.getvalue())
+
+    def test_evaluator_never_reads_a_sample_outside_the_selected_folder(self):
+        from unittest import mock
+        module, _ = self.load_validation("twin_eval")
+        with tempfile.TemporaryDirectory() as d:
+            selected = os.path.join(d, "selected"); os.mkdir(selected)
+            inside = os.path.join(selected, "normal.md"); outside = os.path.join(d, "outside.md")
+            with open(inside, "w") as f: f.write("Ordinary sample writing.")
+            with open(outside, "w") as f: f.write("Outside sample content.")
+            with mock.patch.object(module.tl, "list_text_files", return_value=[outside, inside]):
+                result = module.read_samples(selected, 12000)
+            self.assertIn("Ordinary sample writing.", result)
+            self.assertNotIn("Outside sample content.", result)
+
+    def test_a_missing_second_judgement_is_not_counted_as_a_win(self):
+        import contextlib, io
+        from unittest import mock
+        module, _ = self.load_validation("twin_eval")
+        with tempfile.TemporaryDirectory() as d:
+            profile = os.path.join(d, "profile.md"); out = os.path.join(d, "result.json")
+            with open(profile, "w") as f: f.write("Use short plain sentences.")
+            replies = [("A generic answer.", {}, "end_turn"), ("A personal answer.", {}, "end_turn"),
+                       ('{"winner":"A","confidence":3,"reason":"Shorter."}', {}, "end_turn"),
+                       (None, {}, "refusal")]
+            with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "offline-fixture"}), mock.patch.object(module, "call", side_effect=replies):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = module.main(["--twin", profile, "--tests", "ST-01", "--both-orders", "--out", out])
+            with open(out) as f: result = json.load(f)
+            self.assertEqual(result["summary"]["twin_wins"], 0)
+            self.assertEqual(result["summary"]["errors"], 1)
+            self.assertFalse(result["complete"])
+            self.assertNotEqual(code, 0)
+
 _fixtures = tempfile.TemporaryDirectory(prefix="twin-test-")
 _previous_store = os.environ.get("TWIN_HOME")
 os.environ["TWIN_HOME"] = os.path.join(_fixtures.name, "data")

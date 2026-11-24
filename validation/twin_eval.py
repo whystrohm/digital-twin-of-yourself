@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """twin_eval.py: generic AI vs your Twin on the 15 stress tests, judged blind.
 
-THIS SCRIPT CALLS A PAID API. It is the only file in this repository that
-uses the network. Everything in scripts/ runs offline. Read validation/EVAL.md
+THIS SCRIPT CALLS A PAID API. This optional command uses the network.
+Everything in scripts/ runs offline. Read validation/EVAL.md
 and run --dry-run first: it prints the estimated token use and cost and
 sends nothing.
 
@@ -104,12 +104,15 @@ def read_samples(folder, limit):
     parts = []
     used = 0
     for f in tl.list_text_files(folder):
-        text = tl.redact(tl.read_text(f)).strip()
-        if not text:
-            continue
         room = limit - used
         if room <= 0:
             break
+        try:
+            text = tl.redact(tl.read_text(f, root=folder)).strip()
+        except (OSError, ValueError):
+            continue
+        if not text:
+            continue
         piece = text[:room]
         parts.append("--- %s ---\n%s" % (tl.redact(os.path.basename(f)), piece))
         used += len(piece)
@@ -308,7 +311,8 @@ def main(argv=None):
                              "confidence": v.get("confidence"), "reason": v.get("reason", "")})
         row["verdicts"] = verdicts
         picks = [v["pick"] for v in verdicts if v["pick"] != "error"]
-        row["result"] = (picks[0] if len(set(picks)) == 1 else "split") if picks else "error"
+        row["result"] = ((picks[0] if len(set(picks)) == 1 else "split")
+                         if len(picks) == len(orders) else "error")
         if args.rules:
             row["rules"] = {"generic": rule_check(args.rules, generic), "twin": rule_check(args.rules, twin)}
         rows.append(row)
@@ -329,12 +333,12 @@ def main(argv=None):
             side: sum(1 for r in rows if r.get("rules", {}).get(side, {}).get("passed")) for side in ("generic", "twin")}
     out = {"generator": args.gen_model, "judge": args.judge_model, "effort": args.effort, "seed": args.seed,
            "both_orders": args.both_orders, "reference": ref_kind, "twin": os.path.basename(args.twin),
-           "complete": True, "summary": summary, "tests": rows}
+           "complete": summary["errors"] == 0, "summary": summary, "tests": rows}
     tl.write_json(args.out, out)
     print("twin %d, generic %d, tie/split %d, errors %d, sign test p=%s" % (
         wins, losses, summary["ties_or_split"], summary["errors"], summary["sign_test_p"]))
     print("tokens used: %d in, %d out. Wrote %s" % (spent["input_tokens"], spent["output_tokens"], args.out))
-    return 0
+    return 1 if summary["errors"] else 0
 
 
 if __name__ == "__main__":
