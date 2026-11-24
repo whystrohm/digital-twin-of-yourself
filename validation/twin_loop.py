@@ -15,11 +15,13 @@ folder and the made-up sample notes. Nothing is written to your real twin.
   python3 validation/twin_loop.py --out FILE.md   also writes it as Markdown
 
 The "owner accepts" steps are done by calling the same function the page's Accept and Replace buttons call.
+A step counts as expected only if its check passes. The script exits 1 if any check fails.
 """
-import json, os, subprocess, sys, tempfile
+import atexit, json, os, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOME_ = tempfile.mkdtemp(prefix="twin-loop-")
+atexit.register(lambda: shutil.rmtree(HOME_, ignore_errors=True))      # removed on every exit path
 ENV = dict(os.environ, TWIN_HOME=HOME_)
 MCP = os.path.join(HOME_, "mcp.json")
 with open(MCP, "w") as f:
@@ -34,6 +36,7 @@ def session(prompt, twin=True):
     cmd += ["--mcp-config", MCP, "--allowedTools", TOOLS] if twin else ["--tools", ""]
     env = {k: v for k, v in ENV.items() if not k.startswith(("CLAUDECODE", "CLAUDE_CODE"))}
     r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=240, cwd=HOME_, env=env)
+    if r.returncode != 0: return "(the session failed: exit %d)" % r.returncode
     return " ".join(r.stdout.split()) or "(no answer)"
 
 
@@ -57,8 +60,9 @@ step("3b. The owner accepts it", owner("p=twin.proposals();print(p[0]['text'] if
 step("4. Another fresh session", session("Use the twin tools. " + Q), lambda t: "black" in t)
 step("5a. The owner changes the decision, and a session proposes it",
      session("The owner just told you: from now on our shipping labels are printed in dark green, not black. Propose that to the twin as a taste note with twin_propose_note. Then reply with one line saying what you proposed."))
-step("5b. The owner picks Replace the old one", owner("p=twin.proposals();print((p[0]['text']+' | clashes with: '+str((p[0]['conflict'] or {}).get('title'))) if p else 'no proposal');twin.settle(p[0]['id'],True,True) if p else None"), lambda t: "green" in t and "black" in t)
-step("6. Another fresh session", session("Use the twin tools. " + Q), lambda t: "green" in t and "black only" not in t)
+step("5b. The owner picks Replace the old one", owner("p=twin.proposals();print((p[0]['text']+' | clashes with: '+str((p[0]['conflict'] or {}).get('title'))) if p else 'no proposal');print(twin.settle(p[0]['id'],True,True)) if p else None"), lambda t: "clashes with: shipping" in t and "'ok': 1" in t)
+step("6. Another fresh session", session("Use the twin tools. " + Q), lambda t: "green" in t[:60] and not t.startswith("black"))      # the answer leads with the new decision; 6b checks what is stored
+step("6b. What the twin holds now", owner("print(' | '.join(e['title'] for e in twin.IX.get().e if 'label' in e['title'].lower()))"), lambda t: "green" in t and "black only" not in t)
 step("The twin's own log", owner("print(chr(10).join(r['at']+' | '+r['action']+' | '+r['detail'] for r in twin.DB.execute('select at,action,detail from log order by id')))"))
 step("Who asked", owner("print(json.dumps([{k:c[k] for k in ('name','last_tool','calls')} for c in twin.clients()]))"))
 
@@ -72,3 +76,4 @@ if "--out" in sys.argv:
             f.write("\n## %s\n\n```\n%s\n```\n%s" % (title, text, "" if ok is None else ("\nAs expected.\n" if ok else "\nNot as expected.\n")))
 import shutil
 shutil.rmtree(HOME_, ignore_errors=True)
+sys.exit(0 if all(checked) and checked else 1)

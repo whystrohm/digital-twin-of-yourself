@@ -65,22 +65,25 @@ Any other MCP client: add a server whose command is `python3` and whose argument
 
 A session can only propose. Nothing becomes part of the twin until you accept it.
 
-The page shows which client last asked the twin and when, under the session list. If it says no session has asked yet, the connection is not being used.
+The page shows which client last used the twin and when, under the session list. The client reports its own name, so treat it as a label. If it says no session has asked yet, the connection is not being used.
+
+Settings changed in the page reach open sessions on their next question. Remove a notes folder or a repo in Setup, and a session that was already running stops seeing it.
 
 ## How it learns, and how you undo it
 
 - Everything the twin learns is one Markdown file in `~/.twin/notes/`, with its area, scope, source and the time you accepted it. You can read, edit, copy or delete those files by hand.
 - When a proposed note clashes with one you already have, the page shows both and asks: replace the old one, keep both, or drop it.
-- A replaced note is kept and marked replaced. **Review** lists replaced notes with a Restore button.
+- A replaced note is kept and marked replaced. **Review** lists replaced notes with a Restore button. Restoring one marks the note that replaced it as replaced in turn, so only one stays active.
+- Your choice is tied to the exact proposal and the exact old note on screen. If either changed since you looked, nothing happens and the page reloads.
 - A note has a scope: `personal`, `brand`, or `project:<name>`. A session can pass its project name to `twin_recall`, and notes for that project rank first.
-- `python3 twin/twin.py export FOLDER` writes the twin's own notes, a `memory.json` of every note it can read, the rules file and the log.
+- `python3 twin/twin.py export FOLDER` needs a new or empty folder. It writes active notes to `notes/`, replaced ones to `replaced/`, a `memory.json` of every active note it can read, the rules file and the log.
 
 ## What leaves your machine
 
 | Setting | What leaves | Where |
 |---|---|---|
 | Answers: notes only (the default) | Nothing | Nowhere |
-| Answers: Claude | Your question, the notes that match, your priorities, your repo and shipped lists, and your voice profile. These are sent as they are, not redacted further | Claude, through your own `claude` CLI |
+| Answers: Claude | Your question, your display name, the notes that match, your priorities, your repo and shipped lists, and your voice profile. These are sent as they are, not redacted further | Claude, through your own `claude` CLI |
 | Rewrite it as me | The draft, your voice rules and your voice profile. This runs even when answers are set to notes only | Claude, through your own `claude` CLI |
 | Voice on, system voice | Nothing | Nowhere |
 | Voice on, ElevenLabs voice | The text of each reply | ElevenLabs, through your own key |
@@ -112,7 +115,7 @@ Speech to text runs on your machine with whisper.cpp. Install `whisper-cli` and 
 
 ## Your voice rules
 
-**Check a draft** uses one rules file. Out of the box that is the example in `twins/example/`, not yours. To use your own, build a twin with the voice tools in this repo (see the README), then put the path to its `twin.rules.json` in Setup under Notes. Notes and "Teach it" add to memory. They do not change the checker's rules.
+**Check a draft** uses one rules file, and answers and rewrites by Claude use one voice profile. Out of the box both are the examples in `twins/example/`, not yours. Setup shows which files are active and lets you change both. To use your own, build a twin with the voice tools in this repo (see the README), then put the path to its `twin.rules.json` in Setup under Notes. Notes and "Teach it" add to memory. They do not change the checker's rules.
 
 ## Your data
 
@@ -124,7 +127,7 @@ Everything the twin keeps is in `~/.twin`: `twin.db` (priorities, notes you taug
 
 ## Rules for using it
 
-- Your own face and voice, or ones you have written consent for. Setup makes you tick a box for each. That is your statement, recorded with the time. The twin cannot verify it.
+- Your own face and voice, or ones you have written consent for. Setup makes you tick a box for each. That is your statement, recorded with the time. The twin cannot verify it. Running `twin/head/build.py` by hand skips the page, so the same rule is on you.
 - Your own notes. Never a coworker's messages or a client's data.
 - A twin of a person is theirs. Do not use one to monitor or score anyone.
 

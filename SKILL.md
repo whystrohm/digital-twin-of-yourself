@@ -61,10 +61,10 @@ ELSE:
 ## Layer 3: Measured File Scan (Claude Code / Cowork)
 
 ### What to scan (in priority order)
-1. **Sent emails / Slack exports**: highest signal for natural voice
+1. **The user's own sent emails or messages**, scrubbed of other people's names and details: highest signal for natural voice
 2. **Proposals and pitch docs**: decision logic and framing patterns
 3. **CLAUDE.md / README files**: how they brief others
-4. **Client communications**: tone shifts across contexts
+4. **The user's own side of client conversations**, scrubbed. Never a client's or a coworker's words
 5. **Social posts / blog drafts**: public voice vs. private voice
 6. **Meeting notes / journal entries**: unfiltered thinking
 

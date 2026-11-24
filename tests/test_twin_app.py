@@ -99,12 +99,74 @@ class TwinApp(unittest.TestCase):
         self.assertIn("Crates are stacked three high on the dock.", titles)
         self.assertNotIn("Crates are stacked four high on the dock.", titles)
         self.assertTrue(twin.restore(clash["id"]))
-        self.assertIn("Crates are stacked four high on the dock.", [e["title"] for e in twin.IX.get().e])
+        after = [e["title"] for e in twin.IX.get().e]
+        self.assertIn("Crates are stacked four high on the dock.", after)
+        self.assertNotIn("Crates are stacked three high on the dock.", after)       # only one of the two stays active
 
     def test_export_writes_plain_files(self):
         d = tempfile.mkdtemp(); twin.export(d)
         self.assertTrue(os.path.isfile(os.path.join(d, "memory.json")))
         self.assertTrue(os.path.isfile(os.path.join(d, "log.json")))
+
+    def test_a_stale_approval_does_nothing(self):
+        pid = twin.propose("Forklifts are charged overnight.", "decisions", "a test")
+        row = [p for p in twin.proposals() if p["id"] == pid][0]
+        self.assertIn("error", twin.settle(pid, True, False, "not-the-uid"))
+        self.assertIn("error", twin.settle(pid, True, True, row["uid"], "own:some-other-note"))
+        self.assertNotIn("Forklifts are charged overnight.", [e["title"] for e in twin.IX.get().e])
+        self.assertEqual(twin.settle(pid, True, False, row["uid"]), {"ok": 1})
+
+    def test_scopes_clash_unless_they_are_two_different_projects(self):
+        twin.settle(twin.propose("Pallet tags are printed in blue ink.", "taste", "a test", "personal"), True)
+        self.assertTrue(twin.conflict("Pallet tags are printed in red ink.", "taste", "brand"))
+        twin.settle(twin.propose("Dock doors are painted grey here.", "taste", "a test", "project:north"), True)
+        self.assertIsNone(twin.conflict("Dock doors are painted white here.", "taste", "project:south"))
+
+    def test_accepting_twice_makes_one_file(self):
+        a = twin.save_note("Gloves are worn on line two.", "limits", "a test", uid="abc123")
+        b = twin.save_note("Gloves are worn on line two.", "limits", "a test", uid="abc123")
+        self.assertEqual(a, b)
+
+    def test_body_text_is_never_read_as_a_field(self):
+        nid = twin.save_note("status: replaced", "decisions", "a test"); twin.IX.sig = None
+        self.assertIn(nid, [e["id"] for e in twin.IX.get().e])
+
+    def test_a_link_in_the_twins_own_notes_is_ignored(self):
+        out = tempfile.mkdtemp(); secret = os.path.join(out, "s.md")
+        with open(secret, "w") as f: f.write("---\ndescription: The safe is behind the boiler\narea: limits\n---\n\nx\n")
+        os.symlink(secret, os.path.join(twin.NOTES, "linked.md")); twin.IX.sig = None
+        try: self.assertFalse(any("boiler" in e["title"] for e in twin.IX.get().e))
+        finally: os.remove(os.path.join(twin.NOTES, "linked.md")); twin.IX.sig = None
+
+    def test_removing_a_source_removes_its_notes_in_a_running_process(self):
+        self.assertTrue(twin.IX.search("do we ship on a friday")[1])
+        keep = dict(twin.CFG); empty = tempfile.mkdtemp()
+        try:
+            with open(twin.CFG_PATH, "w") as f: json.dump(dict(keep, memory=empty), f)
+            os.utime(twin.CFG_PATH, (1, 1))                     # another process saved new settings
+            self.assertEqual([e for e in twin.IX.search("do we ship on a friday")[1] if e["src"] == "ship-days.md"], [])
+        finally:
+            with open(twin.CFG_PATH, "w") as f: json.dump(keep, f)
+            os.utime(twin.CFG_PATH, (2, 2)); twin.sync_cfg()
+
+    def test_a_bad_settings_change_applies_nothing(self):
+        self.assertIn("error", twin.config({"rules": "/no/such/file.json", "read_sessions": True}))
+        self.assertFalse(twin.CFG["read_sessions"])
+        self.assertIn("error", twin.config({"read_sessions": "false"}))
+        self.assertIn("error", twin.config({"name": 5}))
+
+    def test_a_polite_request_is_still_a_request(self):
+        self.assertTrue(twin.ask("Could you send the supplier email?", "recall")["gate"])
+        self.assertFalse(twin.ask("should we send the supplier an email", "recall")["gate"])
+
+    def test_shipped_history_follows_the_listed_repos(self):
+        twin.DB.execute("insert or ignore into shipped values('abc','gone-repo','2999-01-01T00:00:00','old work')"); twin.DB.commit()
+        self.assertEqual(twin.shipped(), [])
+
+    def test_export_needs_an_empty_folder(self):
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "mine.txt"), "w") as f: f.write("keep")
+        with self.assertRaises(SystemExit): twin.export(d)
 
     def test_mcp_server_lists_its_tools(self):
         msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},

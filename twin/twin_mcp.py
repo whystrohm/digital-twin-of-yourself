@@ -60,8 +60,8 @@ for line in sys.stdin:
         p = m.get("params", {}); t = TOOLS.get(p.get("name"))
         if not t: reply(i, error={"code": -32602, "message": "Unknown tool"}); continue
         try:
-            twin.client_seen(CLIENT[0], p.get("name"))
-            out = t[2](p.get("arguments") or {}); reply(i, {"content": [{"type": "text", "text": out if isinstance(out, str) else json.dumps(out, indent=1)}]})
+            twin.sync_cfg()                      # settings may have changed in the page since this session started
+            out = t[2](p.get("arguments") or {}); twin.client_seen(CLIENT[0], p.get("name")); reply(i, {"content": [{"type": "text", "text": out if isinstance(out, str) else json.dumps(out, indent=1)}]})
         except Exception as e: reply(i, {"content": [{"type": "text", "text": "The twin could not answer: " + type(e).__name__}], "isError": True})
     elif meth == "ping": reply(i, {})
     elif i is not None: reply(i, error={"code": -32601, "message": "Method not found"})

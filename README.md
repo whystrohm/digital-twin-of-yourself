@@ -26,7 +26,7 @@ Built for people who already work with coding agents and are tired of correcting
 
 ## Does it work
 
-One real run of the learning loop, with fresh sessions each time: a session does not know something, you correct it once, the next fresh session uses the note and names its source, you change the decision, and the next session uses the new one only. 6 of 6 steps came out as expected. The full transcript is in [validation/LOOP_RESULTS.md](validation/LOOP_RESULTS.md), and `python3 validation/twin_loop.py` runs it again on your own Claude account.
+One real run of the learning loop, with fresh sessions each time: a session does not know something, you correct it once, the next fresh session uses the note and names its source, you change the decision, and the next session uses the new one only. All 7 checked steps came out as expected, including a check of what the twin holds at the end. The full transcript is in [validation/LOOP_RESULTS.md](validation/LOOP_RESULTS.md), and `python3 validation/twin_loop.py` runs it again on your own Claude account.
 
 That is one run on made-up notes. It shows the loop works. It is not a measure of how much time it saves you.
 
@@ -86,7 +86,7 @@ The default is nothing. The page always shows the current line in its top right 
 | You turn on | What leaves | Where |
 |---|---|---|
 | Nothing (the default) | Nothing | Nowhere |
-| Answers by Claude | Your question, the notes that match, your priorities, your repo and shipped lists, and your voice profile | Claude, through your own CLI |
+| Answers by Claude | Your question, your display name, the notes that match, your priorities, your repo and shipped lists, and your voice profile | Claude, through your own CLI |
 | Rewrite it as me | The draft, your voice rules and your voice profile. This runs even when answers are set to notes only | Claude, through your own CLI |
 | An ElevenLabs voice | The text of each reply. The system voice sends nothing | ElevenLabs, through your own key |
 | Cloning a voice | The recording you made, once | ElevenLabs, through your own key |
@@ -119,7 +119,7 @@ Use your own face, voice and notes, or ones you have written consent for. A twin
 
 ![The report: your score, the phrases you repeat, where your voice drifts, and flagged lines with a fix](assets/report.png)
 
-The AI does the judgment calls. Everything that can be counted or checked is done by code: it runs on your machine, gives the same answer every time, and strips emails, phone numbers and money amounts before anything is saved.
+The AI does the judgment calls. Everything that can be counted or checked is done by code: it runs on your machine and gives the same answer every time. The scan and the report strip emails, phone numbers and money amounts from what they save. The checker and the twin work on your text as you wrote it.
 
 ![How it works: measure, extract, enforce, improve](assets/how-it-works.png)
 

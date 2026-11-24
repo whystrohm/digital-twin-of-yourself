@@ -7,6 +7,7 @@ Standard library only. Binds to 127.0.0.1. Nothing leaves this machine except:
 Speech to text runs here with whisper-cli. Recall mode uses no model at all.
 """
 import glob, hashlib, json, os, re, secrets, sqlite3, subprocess, sys, tempfile, threading, time
+import contextlib
 import urllib.request
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -35,8 +36,24 @@ DEFAULT = {
     "whisper": os.environ.get("TWIN_WHISPER_MODEL", ""),   # path to a whisper.cpp model file, for the microphone
 }
 if not os.path.exists(CFG_PATH):
-    json.dump(DEFAULT, open(CFG_PATH, "w"), indent=2)
-CFG = {**DEFAULT, **json.load(open(CFG_PATH))}
+    with open(CFG_PATH, "w") as _f: json.dump(DEFAULT, _f, indent=2)
+with open(CFG_PATH) as _f: CFG = {**DEFAULT, **json.load(_f)}
+CFG_AT = [os.path.getmtime(CFG_PATH)]
+
+
+def sync_cfg():
+    """Another process may have changed the settings. Pick them up before answering, so a source that was removed stays removed."""
+    try: m = os.path.getmtime(CFG_PATH)
+    except OSError: return
+    if m == CFG_AT[0]: return
+    with open(CFG_PATH) as f: new = json.load(f)
+    CFG.clear(); CFG.update({**DEFAULT, **new}); CFG_AT[0] = m; IX.sig = None; _cache.clear(); refilter()
+
+
+def save_cfg():
+    tmp = CFG_PATH + ".tmp"
+    with open(tmp, "w") as f: json.dump(CFG, f, indent=2)
+    os.replace(tmp, CFG_PATH); CFG_AT[0] = os.path.getmtime(CFG_PATH)
 
 
 class _Rx:
@@ -46,8 +63,14 @@ class _Rx:
     def findall(self, s): return self.r.findall(s) if self.r else []
 
 
-HARD, DENY = _Rx(CFG["never"], None), _Rx(CFG["deny"], None)
-ALLOW_F, ALLOW_T = _Rx(CFG["allow_files"], True), _Rx(CFG["allow_terminals"], True)
+def refilter():
+    """Rebuilds the owner's filters from the current settings."""
+    global HARD, DENY, ALLOW_F, ALLOW_T
+    HARD, DENY = _Rx(CFG.get("never", ""), None), _Rx(CFG.get("deny", ""), None)
+    ALLOW_F, ALLOW_T = _Rx(CFG.get("allow_files", ""), True), _Rx(CFG.get("allow_terminals", ""), True)
+
+
+refilter()
 
 
 class _Excl:
@@ -72,9 +95,24 @@ create table if not exists log(id integer primary key, at text, action text, det
 create table if not exists proposed(id integer primary key, text text, area text, source text, created text);
 """)
 os.chmod(os.path.join(STORE, "twin.db"), 0o600)
-try: DB.execute("alter table proposed add column scope text default 'personal'")
-except sqlite3.OperationalError: pass
+for _col in ("scope text default 'personal'", "uid text default ''"):
+    try: DB.execute("alter table proposed add column " + _col)
+    except sqlite3.OperationalError: pass
+if os.path.islink(os.path.join(STORE, "notes")): raise SystemExit("The notes folder inside the twin's data folder is a link. Remove it and start again.")
 NOTES = os.path.join(STORE, "notes"); os.makedirs(NOTES, exist_ok=True)
+
+
+@contextlib.contextmanager
+def locked():
+    """One writer at a time, across the page server and every MCP process."""
+    with LOCK:
+        f = open(os.path.join(STORE, "lock"), "w")
+        try:
+            try:
+                import fcntl; fcntl.flock(f, fcntl.LOCK_EX)
+            except ImportError: pass
+            yield
+        finally: f.close()
 
 
 def now(): return datetime.now().isoformat(timespec="seconds")
@@ -124,31 +162,54 @@ TASTE = re.compile(r"\b(look|style|colou?r|visual|type|caption|frame|film|reel|v
 VOICE = re.compile(r"\b(voice|reply|replies|prose|copy|word|email|message|greeting|hashtag|dm|text|heading|sentence)\w*\b", re.I)
 
 
+def header(raw):
+    m = re.match(r"\A---\n(.*?)\n---\n", raw, re.S)
+    return m.group(1) if m else ""
+
+
 def fm(raw, key):
-    m = re.search(r"^%s:[ \t]*(.*)$" % key, raw[:2000], re.M)
+    """One field from the fenced header only. Nothing in the body is ever read as a field."""
+    m = re.search(r"^%s:[ \t]*(.*)$" % re.escape(key), header(raw), re.M)
     return m.group(1).strip() if m else ""
 
 
-def save_note(text, area, source, scope="personal", replaces=""):
-    """Everything the twin learns is one plain Markdown file in its notes folder: readable, editable, easy to back up."""
-    text = " ".join(str(text).split()); slug = re.sub(r"[^a-z0-9]+", "-", text.lower())[:48].strip("-") or "note"
-    p = os.path.join(NOTES, "%s-%s.md" % (now()[:10], slug)); n = 2
-    while os.path.exists(p): p = os.path.join(NOTES, "%s-%s-%d.md" % (now()[:10], slug, n)); n += 1
+def save_note(text, area, source, scope="personal", replaces="", uid=""):
+    """Everything the twin learns is one plain Markdown file in its notes folder: readable, editable, easy to back up.
+    With a uid the write is repeatable: a second call for the same proposal returns the first file."""
+    one = lambda v: " ".join(str(v).split())
+    text = one(text); slug = re.sub(r"[^a-z0-9]+", "-", text.lower())[:48].strip("-") or "note"
+    if uid:
+        done = [f for f in glob.glob(os.path.join(NOTES, "*-%s.md" % uid)) if not os.path.islink(f)]
+        if done: return "own:" + os.path.basename(done[0])[:-3]
     scope = scope if re.fullmatch(r"personal|brand|project:[\w.-]{1,60}", scope or "") else "personal"
-    with open(p, "w") as f:
-        f.write("---\ndescription: %s\narea: %s\nscope: %s\nsource: %s\naccepted: %s\n%s---\n\n%s\n" % (text, area if area in AREAS else "decisions", scope, " ".join(str(source).split())[:80], now(), ("replaces: %s\n" % replaces) if replaces else "", text))
-    return "own:" + os.path.basename(p)[:-3]
+    body = "---\ndescription: %s\narea: %s\nscope: %s\nsource: %s\naccepted: %s\n%s---\n\n%s\n" % (
+        text, area if area in AREAS else "decisions", scope, one(source)[:80], now(), ("replaces: %s\n" % one(replaces)) if replaces else "", text)
+    for n in range(1, 500):
+        p = os.path.join(NOTES, "%s-%s%s%s.md" % (now()[:10], slug, "" if n == 1 else "-%d" % n, "-" + uid if uid else ""))
+        try:
+            with open(p, "x") as f: f.write(body)       # never writes over a file, never through a link
+            return "own:" + os.path.basename(p)[:-3]
+        except FileExistsError: continue
+    raise OSError("could not save the note")
 
 
 def set_status(note_id, status, by=""):
-    """Marks one of the twin's own notes replaced or active again by editing its front matter. The text is kept."""
+    """Marks one of the twin's own notes replaced or active again by editing its header. The body is never touched."""
     p = os.path.join(NOTES, note_id[4:] + ".md")
-    if not note_id.startswith("own:") or not inside(p, NOTES) or not os.path.isfile(p): return False
+    if not note_id.startswith("own:") or os.path.islink(p) or not os.path.isfile(p) or not inside(p, NOTES): return False
     with open(p) as f: raw = f.read()
-    raw = re.sub(r"^(status|replaced_by): .*\n", "", raw, flags=re.M)
-    if status == "replaced": raw = raw.replace("---\n\n", "status: replaced\nreplaced_by: %s\n---\n\n" % by, 1)
-    with open(p, "w") as f: f.write(raw)
+    hd = header(raw)
+    if not hd: return False
+    rest = raw[len("---\n" + hd + "\n---\n"):]
+    lines = [l for l in hd.split("\n") if not re.match(r"(status|replaced_by):", l)]
+    if status == "replaced": lines += ["status: replaced", "replaced_by: %s" % by]
+    with open(p, "w") as f: f.write("---\n" + "\n".join(lines) + "\n---\n" + rest)
     return True
+
+
+def own_files():
+    """The twin's own note files: regular files inside the notes folder. Links are never followed."""
+    return [p for p in sorted(glob.glob(os.path.join(NOTES, "*.md"))) if not os.path.islink(p) and os.path.isfile(p) and inside(p, NOTES)]
 
 
 def first_date(body, path):
@@ -165,7 +226,9 @@ def load_entries():
         if not inside(path, CFG["memory"]): continue
         if base == "MEMORY.md" or base.lower() == "readme.md" or base.endswith("-index.md") or not ALLOW_F.search(base) or EXCL.search(base):
             continue
-        raw = open(path, errors="replace").read()
+        try:
+            with open(path, errors="replace") as f: raw = f.read()
+        except OSError: continue
         if HARD.search(raw):
             continue  # one mention anywhere drops the whole note
         dm = re.search(r"^description:\s*(.+)$", raw, re.M)
@@ -196,7 +259,7 @@ def load_entries():
         out.append({"id": base[:-3], "area": area, "title": redact(desc)[:260], "why": redact(why.group(1))[:240].rsplit(' ', 1)[0] if why and not EXCL.search(why.group(1)) else "",
                     "since": since, "mod": mod, "src": base, "stale": stale, "body": redact(body)[:6000], "scope": fm(raw, "scope") or "personal"})
     try:
-        rules = json.load(open(CFG["rules"]))
+        with open(CFG["rules"]) as f: rules = json.load(f)
         mod = datetime.fromtimestamp(os.path.getmtime(CFG["rules"])).date().isoformat()
         for r in rules["rules"]:
             ph = r.get("phrases") or []
@@ -210,11 +273,13 @@ def load_entries():
     for r in list(DB.execute("select * from taught")):          # older versions kept taught notes in the database: move them to files
         save_note(r["text"], r["area"], "taught in the page"); DB.execute("delete from taught where id=?", (r["id"],))
     DB.commit()
-    for path in sorted(glob.glob(os.path.join(NOTES, "*.md"))):
-        with open(path, errors="replace") as f: raw = f.read()
+    for path in own_files():
+        try:
+            with open(path, errors="replace") as f: raw = f.read()
+        except OSError: continue
         text = fm(raw, "description")
-        if not text or HARD.search(raw) or fm(raw, "status") == "replaced" or not inside(path, NOTES): continue
-        d = fm(raw, "accepted")[:10] or now()[:10]
+        if not text or EXCL.search(text) or HARD.search(raw) or fm(raw, "status") == "replaced": continue      # the owner's filters apply here too
+        d = fm(raw, "accepted")[:10]; d = d if re.fullmatch(r"20\d\d-\d\d-\d\d", d) else now()[:10]
         out.append({"id": "own:" + os.path.basename(path)[:-3], "area": fm(raw, "area") if fm(raw, "area") in AREAS else "decisions", "title": text,
                     "why": ("Replaces: " + fm(raw, "replaces")) if fm(raw, "replaces") else "", "since": d, "mod": d, "src": "your twin · " + (fm(raw, "source") or "taught"),
                     "stale": "", "body": text, "scope": fm(raw, "scope") or "personal"})
@@ -244,10 +309,11 @@ class Index:
 
     def get(self):
         with LOCK:
-            files = glob.glob(os.path.join(CFG["memory"], "*.md"))
-            own = glob.glob(os.path.join(NOTES, "*.md"))
-            sig = (len(files), max([os.path.getmtime(f) for f in files] or [0]), len(own), max([os.path.getmtime(f) for f in own] or [0]),
-                   DB.execute("select count(*) from taught").fetchone()[0], DB.execute("select count(*) from review").fetchone()[0])
+            sync_cfg()
+            files = [f for f in glob.glob(os.path.join(CFG["memory"], "*.md")) if os.path.isfile(f)]
+            own = own_files(); mt = lambda fs: max([os.lstat(f).st_mtime for f in fs] or [0])
+            sig = (CFG["memory"], CFG.get("rules"), len(files), mt(files), len(own), mt(own), DB.execute("select count(*) from taught").fetchone()[0],
+                   DB.execute("select count(*), coalesce(max(at), '') from review").fetchone()[:], DB.execute("select count(*), coalesce(max(at), '') from replaced").fetchone()[:])
             if sig != self.sig:
                 self.e = load_entries(); self.df = {}; self.tf = []
                 for x in self.e:
@@ -349,8 +415,10 @@ def repos():
 
 
 def shipped(days=7):
+    names = [os.path.basename(r) for r in CFG["repos"]]
+    if not names: return []
     since = (datetime.now() - timedelta(days=days)).isoformat()
-    return [dict(r) for r in DB.execute("select repo,at,subject from shipped where at>=? order by at desc limit 400", (since,))]
+    return [dict(r) for r in DB.execute("select repo,at,subject from shipped where at>=? and repo in (%s) order by at desc limit 400" % ",".join("?" * len(names)), [since] + names)]
 
 
 def priorities():
@@ -358,7 +426,7 @@ def priorities():
 
 
 def state():
-    e = IX.get().e
+    sync_cfg(); e = IX.get().e
     return {"name": CFG["name"], "areas": AREAS, "now": now(),
             "entries": [dict({k: x[k] for k in ("id", "area", "title", "why", "since", "mod", "src", "stale")}, scope=x.get("scope", "personal")) for x in e],
             "replaced": [dict(r) for r in DB.execute("select * from replaced order by at desc limit 30")], "clients": clients(),
@@ -369,6 +437,16 @@ def state():
 # ------------------------------------------------------------------ talk
 
 GATE = re.compile(r"^\W*(?:please |can you |go ahead and |just |ok |yo )*(push|deploy|publish|send|email|post|pay|buy|spend|delete|remove the repo|merge|ship)\b", re.I)
+POLITE = re.compile(r"^\W*(?:(?:please|could you|can you|would you|will you|go ahead and|just)\s+)+", re.I)
+
+
+def gated(q):
+    """Chat and the MCP tool share this: is it a request to act that needs the owner's yes?"""
+    if re.search(r"^\W*(should|when|why|how|what|who|where|is|are|do|does|did)\b", q, re.I): return False
+    q2 = POLITE.sub("", q).rstrip(" ?")
+    return bool(GATE.match(q2) or (ACT.match(q2) and allowed(q2)["matching_limits"]))
+
+
 ACT = re.compile(r"^\W*(?:please |can you |go ahead and |just )*(change|update|edit|set|book|order|cancel|refund|promise|sign|approve|move|overwrite|raise|lower)\b", re.I)
 NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "first": 1, "second": 2, "third": 3}
 
@@ -479,8 +557,8 @@ def ask(q, mode):
     out = {"gate": False, "sources": [], "level": ""}
     d = direct(q)
     if d: out.update(d, level="exact")
-    elif not re.search(r"\?$|^\W*(should|would|when|why|how|what|who|where|is|are|do|does|did|can we|could)\b", q, re.I) and (GATE.match(q) or (ACT.match(q) and allowed(q)["matching_limits"])):
-        m = GATE.match(q); verb = m.group(1).lower() if m else ""
+    elif gated(q):
+        m = GATE.match(POLITE.sub("", q)); verb = m.group(1).lower() if m else ""
         fam = {"push": "push|deploy", "deploy": "push|deploy", "publish": "push|publish|post", "ship": "push|deploy|ship", "send": "send|email|draft", "email": "send|email|draft", "post": "post|publish",
                "pay": "paid|spend|cost|quote", "buy": "paid|spend|cost", "spend": "paid|spend|cost|quote", "delete": "delete|protect|remove", "merge": "push|merge"}.get(verb, verb)
         lim = [e for e in IX.get().e if e["area"] == "limits" and fam and re.search(fam, e["id"] + " " + e["title"], re.I)]
@@ -503,7 +581,8 @@ def ask(q, mode):
 
 def check(text):
     with tempfile.TemporaryDirectory() as d:
-        p = os.path.join(d, "draft.md"); open(p, "w").write(text[:60000])
+        p = os.path.join(d, "draft.md")
+        with open(p, "w") as f: f.write(text[:60000])
         r = run([sys.executable, CFG["checker"], "--rules", CFG["rules"], "--format", "json", p], timeout=20)
         try: return json.loads(r)
         except Exception: return {"error": "The checker did not return a result."}
@@ -556,29 +635,26 @@ def listen(blob):
 # ------------------------------------------------------------------ proposals from sessions, and the audit
 
 
-def conflict(text, area):
-    """An existing note in the same area that says something close enough to clash."""
+def conflict(text, area, scope=None):
+    """An existing note in the same area that says something close enough to clash. Notes for two different projects may disagree, so those are not offered. Checker rules are never offered."""
     w = set(toks(text)); best = None
     for e in IX.get().e:
-        if e["area"] != area or e["title"] == text: continue
+        if e["area"] != area or e["title"] == text or e["id"].startswith("rule:") or (scope and scope.startswith("project:") and e.get("scope", "personal").startswith("project:") and e.get("scope") != scope): continue      # two different projects may disagree
         t = set(toks(e["title"])); sh = len(w & t)
         if sh >= 2 and sh / max(1, min(len(w), len(t))) >= .5 and (not best or sh > best[0]): best = (sh, e)
     return {"id": best[1]["id"], "title": best[1]["title"], "src": best[1]["src"]} if best else None
 
 
-def replace_note(old, new_id, new_text):
-    """The old note is kept and marked replaced. It can be restored."""
-    with LOCK:
-        if not set_status(old["id"], "replaced", new_id): DB.execute("insert or replace into review values(?,?,?)", (old["id"], "outdated", now()))
-        DB.execute("insert or replace into replaced values(?,?,?,?)", (old["id"], old["title"], new_id, now())); DB.commit()
-    audit_log("note replaced", "%s -> %s" % (old["title"], new_text)); IX.sig = None
-
-
 def restore(old_id):
-    with LOCK:
+    """Brings a replaced note back. The note that had replaced it is marked replaced in turn, so only one stays active."""
+    with locked():
         r = DB.execute("select * from replaced where old_id=?", (old_id,)).fetchone()
         if not r: return False
         if not set_status(old_id, "active"): DB.execute("delete from review where key=?", (old_id,))
+        by = r["by_id"] or ""; bp = os.path.join(NOTES, by[4:] + ".md")
+        if by.startswith("own:") and os.path.isfile(bp) and not os.path.islink(bp):
+            with open(bp) as f: bt = fm(f.read(), "description")
+            if set_status(by, "replaced", old_id): DB.execute("insert or replace into replaced values(?,?,?,?)", (by, bt, old_id, now()))
         DB.execute("delete from replaced where old_id=?", (old_id,)); DB.commit()
     audit_log("note restored", r["title"]); IX.sig = None; return True
 
@@ -598,37 +674,54 @@ def clients():
 
 
 def export(dest):
-    """Writes everything the twin has learned as plain files: its own notes, every note it can read, the rules and the log."""
+    """Writes what the twin has learned as plain files into a new, empty folder. Active notes and replaced notes are kept apart."""
     import shutil
-    os.makedirs(os.path.join(dest, "notes"), exist_ok=True)
-    for f in glob.glob(os.path.join(NOTES, "*.md")): shutil.copy(f, os.path.join(dest, "notes"))
-    with open(os.path.join(dest, "memory.json"), "w") as f: json.dump([{k: e.get(k, "") for k in ("id", "area", "scope", "title", "why", "since", "src")} for e in IX.get().e], f, indent=1)
-    with open(os.path.join(dest, "log.json"), "w") as f: json.dump([dict(r) for r in DB.execute("select at,action,detail from log order by id")], f, indent=1)
-    if os.path.isfile(CFG["rules"]): shutil.copy(CFG["rules"], os.path.join(dest, "twin.rules.json"))
-    return len(glob.glob(os.path.join(dest, "notes", "*.md")))
+    dest = os.path.abspath(os.path.expanduser(dest))
+    if os.path.islink(dest) or (os.path.exists(dest) and (not os.path.isdir(dest) or os.listdir(dest))): raise SystemExit("Give export a new or empty folder.")
+    os.makedirs(os.path.join(dest, "notes")); os.makedirs(os.path.join(dest, "replaced")); n = 0
+    for f in own_files():
+        with open(f, errors="replace") as fh: raw = fh.read()
+        if HARD.search(raw) or EXCL.search(fm(raw, "description")): continue
+        shutil.copyfile(f, os.path.join(dest, "replaced" if fm(raw, "status") == "replaced" else "notes", os.path.basename(f))); n += 1
+    with open(os.path.join(dest, "memory.json"), "x") as f: json.dump([{k: e.get(k, "") for k in ("id", "area", "scope", "title", "why", "since", "src")} for e in IX.get().e], f, indent=1)
+    with open(os.path.join(dest, "log.json"), "x") as f: json.dump([dict(r) for r in DB.execute("select at,action,detail from log order by id")], f, indent=1)
+    if os.path.isfile(CFG["rules"]) and not os.path.islink(CFG["rules"]): shutil.copyfile(CFG["rules"], os.path.join(dest, "twin.rules.json"))
+    with open(os.path.join(dest, "README.txt"), "x") as f: f.write("notes/ holds the active notes the twin learned. replaced/ holds notes a later decision replaced.\nmemory.json lists every active note the twin can read, including ones from your notes folder.\nlog.json is the record of changes. twin.rules.json is the voice rules file in use.\n")
+    return n
 
 
 def propose(text, area, source, scope="personal"):
     text = redact(" ".join(str(text).split()))[:500]
     if not text or HARD.search(text + " " + source) or DENY.search(text): return None
-    with LOCK:
-        c = DB.execute("insert into proposed(text,area,source,created,scope) values(?,?,?,?,?)", (text, area if area in AREAS else "decisions", redact(source)[:80], now(), scope or "personal")); DB.commit()
+    with locked():
+        c = DB.execute("insert into proposed(text,area,source,created,scope,uid) values(?,?,?,?,?,?)",
+                       (text, area if area in AREAS else "decisions", redact(source)[:80], now(), scope or "personal", secrets.token_hex(8))); DB.commit()
     return c.lastrowid
 
 
-def proposals(): return [dict(r, conflict=conflict(r["text"], r["area"])) for r in DB.execute("select * from proposed order by id desc limit 40")]
+def proposals(): return [dict(r, conflict=conflict(r["text"], r["area"], r["scope"])) for r in DB.execute("select * from proposed order by id desc limit 40")]
 
 
-def settle(pid, accept, replace=False):
-    with LOCK:
+def settle(pid, accept, replace=False, uid=None, old_id=None):
+    """The owner's decision on one proposal. uid ties it to the exact proposal that was on screen, old_id to the exact note it
+    offered to replace. If either changed since, nothing is done. Every step can be repeated after a crash without a duplicate."""
+    with locked():
         r = DB.execute("select * from proposed where id=?", (pid,)).fetchone()
-        if r and accept:
-            old = conflict(r["text"], r["area"]) if replace else None
-            nid = save_note(r["text"], r["area"], r["source"], r["scope"], old["title"] if old else "")
-            if old: replace_note(old, nid, r["text"])
-        DB.execute("delete from proposed where id=?", (pid,)); DB.commit()
-        if r: audit_log("proposal accepted" if accept else "proposal dropped", "%s | from %s" % (r["text"], r["source"]))
+        if not r or (uid is not None and r["uid"] != uid): return {"error": "That proposal changed. Reload and choose again."}
+        if accept:
+            old = None
+            if replace:
+                old = conflict(r["text"], r["area"], r["scope"])
+                if not old or (old_id is not None and old["id"] != old_id): return {"error": "Your notes changed since you looked. Reload and choose again."}
+            nid = save_note(r["text"], r["area"], r["source"], r["scope"], old["title"] if old else "", r["uid"] or "")
+            if old:
+                if not set_status(old["id"], "replaced", nid): DB.execute("insert or replace into review values(?,?,?)", (old["id"], "outdated", now()))
+                DB.execute("insert or replace into replaced values(?,?,?,?)", (old["id"], old["title"], nid, now()))
+                DB.execute("insert into log(at,action,detail) values(?,?,?)", (now(), "note replaced", ("%s -> %s" % (old["title"], r["text"]))[:300]))
+        DB.execute("insert into log(at,action,detail) values(?,?,?)", (now(), "proposal accepted" if accept else "proposal dropped", ("from %s | %s | %s" % (r["source"], r["scope"], r["text"]))[:300]))
+        DB.execute("delete from proposed where id=?", (pid,)); DB.commit()          # one commit: the log, the replacement record and the removal land together
         IX.sig = None
+    return {"ok": 1}
 
 
 def allowed(action):
@@ -640,7 +733,7 @@ def allowed(action):
     why = ("Pushing, publishing, sending, spending and deleting always need the owner's yes." if gate else
            "One of the owner's limits may apply. Ask first." if match else
            "No matching limit was found. This is advice, not permission. When unsure, ask the owner.")
-    return {"needs_owner_yes": gate or bool(match), "why": why, "matching_limits": match, "note": "Advice only. The twin cannot stop another agent from acting."}
+    return {"needs_owner_yes": gate or bool(match), "verdict": "ask_the_owner" if gate or match else "no_rule_found", "why": why, "matching_limits": match, "note": "Advice only. The twin cannot stop another agent from acting."}
 
 
 KEYS = r"(sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[0-9A-Za-z_-]{30,})"
@@ -726,32 +819,53 @@ def scan_repos():
 
 
 def config(d):
-    global EXCL
-    if "name" in d and d["name"].strip(): CFG["name"] = re.sub(r"[^\w .'-]", "", d["name"].strip())[:14]
-    if "read_sessions" in d: CFG["read_sessions"] = bool(d["read_sessions"]); _cache.clear()
-    if d.get("rules"):
-        rp = os.path.realpath(os.path.expanduser(str(d["rules"]).strip()))
-        try: ok = rp.startswith(HOME + os.sep) and isinstance(json.load(open(rp)).get("rules"), list)
-        except Exception: ok = False
-        if not ok: return {"error": "That is not a twin rules file. Build one with the voice tools first."}
-        if rp != CFG["rules"]: CFG["rules"] = rp; IX.sig = None; audit_log("voice rules set", rp.replace(HOME, "~"))
-    if "voice_id" in d and (d["voice_id"] in ("", "system") or re.fullmatch(r"[A-Za-z0-9]{10,40}", d["voice_id"])):
-        CFG["voice_id"] = d["voice_id"]; CFG["voice_name"] = next((v["name"] for v in voices() if v["voice_id"] == d["voice_id"]), "")
+    """Reads the settings, or changes them. A change is checked whole first. If any part is wrong, nothing is applied."""
+    new = dict(CFG); err = None; str_ = lambda k: isinstance(d.get(k), str)
+    if not isinstance(d, dict): return {"error": "Bad request."}
+    if "name" in d:
+        if not str_("name") or not d["name"].strip(): err = "The name must be text."
+        else: new["name"] = re.sub(r"[^\w .'-]", "", d["name"].strip())[:14] or new["name"]
+    if "read_sessions" in d:
+        if d["read_sessions"] is True or d["read_sessions"] is False: new["read_sessions"] = d["read_sessions"]
+        else: err = "The session setting must be on or off."
+    for key, kind in (("rules", "rules"), ("persona", "profile")):
+        if d.get(key):
+            rp = os.path.realpath(os.path.expanduser(str(d[key]).strip()))
+            if not (str_(key) and rp.startswith(HOME + os.sep) and os.path.isfile(rp)) or HARD.search(rp): err = "The voice %s file was not found inside your home folder." % kind
+            elif key == "rules":
+                with tempfile.TemporaryDirectory() as td:
+                    dp = os.path.join(td, "d.md")
+                    with open(dp, "w") as f: f.write("ok.\n")
+                    if subprocess.run([sys.executable, CFG["checker"], "--rules", rp, dp], capture_output=True, timeout=20).returncode == 2: err = "That is not a valid twin rules file. Build one with the voice tools first."
+            if not err: new[key] = rp
+    if "voice_id" in d:
+        if str_("voice_id") and (d["voice_id"] in ("", "system") or re.fullmatch(r"[A-Za-z0-9]{10,40}", d["voice_id"])):
+            new["voice_id"] = d["voice_id"]; new["voice_name"] = next((v["name"] for v in voices() if v["voice_id"] == d["voice_id"]), "")
+        else: err = "That voice was not recognised."
     if "memory" in d:
-        p = os.path.realpath(os.path.expanduser(d["memory"].strip()))
-        if not os.path.isdir(p): return {"error": "That folder does not exist."}
-        if not p.startswith(HOME + os.sep) or p == HOME or HARD.search(p): return {"error": "Pick one notes folder inside your home folder."}
-        CFG["memory"] = p; CFG["workspace"] = os.path.basename(p)[:24]
+        p = os.path.realpath(os.path.expanduser(d["memory"].strip())) if str_("memory") else ""
+        if not p or not os.path.isdir(p): err = "That folder does not exist."
+        elif not p.startswith(HOME + os.sep) or p == HOME or HARD.search(p): err = "Pick one notes folder inside your home folder."
+        else:
+            new["memory"] = p; new["workspace"] = os.path.basename(p)[:24]
     if "repos" in d:
-        rs = [os.path.realpath(os.path.expanduser(x.strip())) for x in re.split(r"[,\n]", d["repos"]) if x.strip()]
-        bad = [x for x in rs if not os.path.exists(os.path.join(x, ".git"))]
-        if bad: return {"error": "Not a git repo: " + bad[0].replace(HOME, "~")}
-        CFG["repos"] = rs[:12]; _cache.clear()
-    if d: json.dump(CFG, open(CFG_PATH, "w"), indent=2); IX.sig = None
-    try: pts = json.load(open(head_file("head.json")))["points"]
+        rs = [os.path.realpath(os.path.expanduser(x.strip())) for x in re.split(r"[,\n]", d["repos"]) if x.strip()] if isinstance(d["repos"], str) else None
+        bad = None if rs is None else [x for x in rs if not os.path.exists(os.path.join(x, ".git")) or not x.startswith(HOME + os.sep)]
+        if rs is None or bad: err = "Not a git repo inside your home folder: " + (bad[0].replace(HOME, "~") if bad else "")
+        else: new["repos"] = rs[:12]
+    if err: return {"error": err}
+    if d:
+        with locked():
+            if new.get("rules") != CFG.get("rules"): audit_log("voice rules set", new["rules"].replace(HOME, "~"))
+            if new.get("read_sessions") != CFG.get("read_sessions"): audit_log("session list turned " + ("on" if new.get("read_sessions") else "off"))
+            CFG.clear(); CFG.update(new); save_cfg(); IX.sig = None; _cache.clear(); globals().get("refilter", lambda: None)()
+    try:
+        with open(head_file("head.json")) as f: pts = json.load(f)["points"]
     except Exception: pts = 0
     return {"name": CFG["name"], "memory": CFG["memory"].replace(HOME, "~"), "notes": len(IX.get().e), "repos": "\n".join(r.replace(HOME, "~") for r in CFG["repos"]), "voice_id": CFG.get("voice_id", ""), "voice_name": CFG.get("voice_name", ""),
-            "has_voice_key": bool(os.environ.get("ELEVENLABS_API_KEY")) or bool(sys_voice()), "can_clone": bool(os.environ.get("ELEVENLABS_API_KEY")), "read_sessions": bool(CFG.get("read_sessions", True)), "rules": CFG["rules"].replace(HOME, "~"), "rules_example": os.sep + os.path.join("twins", "example") + os.sep in CFG["rules"], "will_read": will_read(), "has_fal": bool(os.environ.get("FAL_KEY")), "head": pts}
+            "has_voice_key": bool(os.environ.get("ELEVENLABS_API_KEY")) or bool(sys_voice()), "can_clone": bool(os.environ.get("ELEVENLABS_API_KEY")), "will_read": will_read(),
+            "read_sessions": bool(CFG.get("read_sessions", True)), "rules": CFG["rules"].replace(HOME, "~"), "rules_example": os.sep + os.path.join("twins", "example") + os.sep in CFG["rules"],
+            "persona": CFG["persona"].replace(HOME, "~"), "persona_example": os.sep + os.path.join("twins", "example") + os.sep in CFG["persona"], "has_fal": bool(os.environ.get("FAL_KEY")), "head": pts}
 
 
 def build_head(raw):
@@ -784,7 +898,8 @@ def build_status():
     except Exception: s = "Starting"
     p = BUILD["proc"]
     if s == "DONE":
-        for f in ("head.bin", "head.json"): os.replace(os.path.join(HEAD, f), os.path.join(STORE, f))
+        for f in ("head.bin", "head.json"):
+            if os.path.exists(os.path.join(HEAD, f)): os.replace(os.path.join(HEAD, f), os.path.join(STORE, f))      # safe to ask twice
         return {"status": "Done", "done": True}
     if s.startswith("ERROR") or (p and p.poll() not in (None, 0)):
         return {"status": s[6:] if s.startswith("ERROR") else "The build stopped. It needs numpy, pillow, trimesh, opencv and rembg. See head/build.log in the twin data folder.", "error": True}
@@ -817,7 +932,7 @@ def clone_voice(raw, path):
         return {"error": str(msg)[:200]}
     except Exception:
         return {"error": "ElevenLabs did not answer."}
-    CFG["voice_id"], CFG["voice_name"] = vid, name; json.dump(CFG, open(CFG_PATH, "w"), indent=2)
+    CFG["voice_id"], CFG["voice_name"] = vid, name; save_cfg()
     audit_log("voice consent ticked, voice cloned", name)
     return {"voice_id": vid, "voice_name": name}
 
@@ -872,7 +987,7 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/ask": return self.send(ask(d["q"], d.get("mode", "recall")))
             if p == "/api/audit": return self.send(audit())
             if p == "/api/scan": return self.send(scan_repos())
-            if p == "/api/proposal": settle(int(d["id"]), bool(d.get("accept")), bool(d.get("replace"))); return self.send({"ok": 1})
+            if p == "/api/proposal": return self.send(settle(int(d["id"]), d.get("accept") is True, d.get("replace") is True, str(d["uid"]), d.get("old_id")))
             if p == "/api/restore": return self.send({"ok": restore(str(d["id"]))})
             if p == "/api/config": return self.send(config(d))
             if p == "/api/voices": return self.send({"voices": voices()})
@@ -885,8 +1000,8 @@ class H(BaseHTTPRequestHandler):
                 if p == "/api/teach":
                     if HARD.search(d["text"]): return self.send({"id": ""})
                     area = d["area"] if d.get("area") in AREAS else "decisions"
-                    text = redact(d["text"].strip())[:500]; clash = conflict(text, area); nid = save_note(text, area, "taught in the page")
-                    audit_log("note taught", text); IX.sig = None
+                    text = redact(d["text"].strip())[:500]; clash = conflict(text, area, "personal"); nid = save_note(text, area, "taught in the page")
+                    audit_log("note taught", "from the page | " + text); IX.sig = None
                     return self.send({"id": nid, "conflict": clash})
                 if p == "/api/review":
                     if d["verdict"] in ("true", "outdated"):
