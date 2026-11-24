@@ -300,7 +300,7 @@ def state():
     return {"name": CFG["name"], "areas": AREAS, "now": now(),
             "entries": [{k: x[k] for k in ("id", "area", "title", "why", "since", "mod", "src", "stale")} for x in e],
             "terminals": cached("t", 4, terminals)[0], "hidden": cached("t", 4, terminals)[1], "repos": cached("r", 30, repos), "shipped": shipped(), "priorities": priorities(),
-            "workspace": CFG.get("workspace", ""), "proposals": proposals(), "voice": bool(os.environ.get("ELEVENLABS_API_KEY")) and bool(CFG.get("voice_id")), "whisper": can_listen()}
+            "workspace": CFG.get("workspace", ""), "proposals": proposals(), "voice": (CFG.get("voice_id") == "system" and bool(sys_voice())) or (bool(os.environ.get("ELEVENLABS_API_KEY")) and bool(CFG.get("voice_id"))), "whisper": can_listen()}
 
 
 # ------------------------------------------------------------------ talk
@@ -444,7 +444,23 @@ def check(text):
         except Exception: return {"error": "The checker did not return a result."}
 
 
+def sys_voice():
+    """A voice that is already on the machine. Free, and the text never leaves it."""
+    import shutil
+    return "say" if sys.platform == "darwin" and shutil.which("say") else "espeak-ng" if shutil.which("espeak-ng") else ""
+
+
+def say_system(text):
+    tool = sys_voice()
+    if not tool or HARD.search(text): return None
+    with tempfile.TemporaryDirectory() as d:
+        w = os.path.join(d, "a.wav")
+        run([tool, "-o", w, "--data-format=LEI16@22050", text[:900]] if tool == "say" else [tool, "-w", w, text[:900]], timeout=40)
+        return open(w, "rb").read() if os.path.exists(w) else None
+
+
 def say(text, voice=None):
+    if (voice or CFG.get("voice_id")) == "system": return say_system(text)
     key = os.environ.get("ELEVENLABS_API_KEY"); voice = voice if voice and re.fullmatch(r"[A-Za-z0-9]{10,40}", voice) else CFG["voice_id"]
     if not key or not voice: return None
     if HARD.search(text): return None
@@ -543,19 +559,51 @@ def head_file(name):
 
 def voices():
     key = os.environ.get("ELEVENLABS_API_KEY")
-    if not key: return []
+    free = [{"voice_id": "system", "name": "System voice", "category": "free · stays on this machine"}] if sys_voice() else []
+    if not key: return free
     try:
         d = json.load(urllib.request.urlopen(urllib.request.Request("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": key}), timeout=20))
         v = [{"voice_id": x["voice_id"], "name": x["name"], "category": x.get("category", "")} for x in d.get("voices", [])]
-        return sorted(v, key=lambda x: (x["category"] not in ("cloned", "professional", "generated"), x["name"].lower()))
+        return free + sorted(v, key=lambda x: (x["category"] not in ("cloned", "professional", "generated"), x["name"].lower()))
     except Exception:
-        return []
+        return free
+
+
+RULE_FILES = ("CLAUDE.md", "AGENTS.md", ".cursorrules", "CONTRIBUTING.md")
+RULE_RX = re.compile(r"\b(never|always|must|do not|don't|only|ask before|without|no)\b", re.I)
+
+
+def will_read():
+    n = len(glob.glob(os.path.join(CFG["memory"], "*.md"))); rs = [os.path.basename(r) for r in CFG["repos"] if os.path.isdir(os.path.join(HOME, r))]
+    return "It reads %d note files in that folder%s. Nothing else." % (n, (", and the git history and instruction files of: " + ", ".join(rs)) if rs else ". No repos are listed")
+
+
+def scan_repos():
+    """Reads the instruction files of the listed repos and proposes their rules as notes. Read only. Nothing is kept until it is accepted."""
+    have = {r["text"] for r in DB.execute("select text from proposed")} | {e["title"] for e in IX.get().e}; n = 0; read = []
+    for r in CFG["repos"]:
+        p = os.path.join(HOME, r)
+        if EXCL.search(r) or not os.path.isdir(p): continue
+        for f in RULE_FILES:
+            fp = os.path.join(p, f)
+            if not os.path.isfile(fp): continue
+            txt = open(fp, errors="replace").read()
+            if HARD.search(txt): continue
+            read.append(os.path.basename(r) + "/" + f)
+            for line in txt.splitlines():
+                m = re.match(r"\s*(?:[-*]|\d+\.)\s+(.{12,220})$", line)
+                if not m or n >= 20: continue
+                t = re.sub(r"[*`]", "", m.group(1)).strip()
+                if not RULE_RX.search(t) or t in have or EXCL.search(t): continue
+                area = "limits" if LIMIT.search(t) else "voice" if VOICE.search(t) else "taste" if TASTE.search(t) else "decisions"
+                if propose(t, area, os.path.basename(r) + "/" + f): have.add(t); n += 1
+    return {"proposed": n, "read": read}
 
 
 def config(d):
     global EXCL
     if "name" in d and d["name"].strip(): CFG["name"] = re.sub(r"[^\w .'-]", "", d["name"].strip())[:14]
-    if "voice_id" in d and (d["voice_id"] == "" or re.fullmatch(r"[A-Za-z0-9]{10,40}", d["voice_id"])):
+    if "voice_id" in d and (d["voice_id"] in ("", "system") or re.fullmatch(r"[A-Za-z0-9]{10,40}", d["voice_id"])):
         CFG["voice_id"] = d["voice_id"]; CFG["voice_name"] = next((v["name"] for v in voices() if v["voice_id"] == d["voice_id"]), "")
     if "memory" in d:
         p = os.path.realpath(os.path.expanduser(d["memory"].strip()))
@@ -571,7 +619,7 @@ def config(d):
     try: pts = json.load(open(head_file("head.json")))["points"]
     except Exception: pts = 0
     return {"name": CFG["name"], "memory": CFG["memory"].replace(HOME, "~"), "notes": len(IX.get().e), "repos": "\n".join(r.replace(HOME, "~") for r in CFG["repos"]), "voice_id": CFG.get("voice_id", ""), "voice_name": CFG.get("voice_name", ""),
-            "has_voice_key": bool(os.environ.get("ELEVENLABS_API_KEY")), "has_fal": bool(os.environ.get("FAL_KEY")), "head": pts}
+            "has_voice_key": bool(os.environ.get("ELEVENLABS_API_KEY")) or bool(sys_voice()), "can_clone": bool(os.environ.get("ELEVENLABS_API_KEY")), "will_read": will_read(), "has_fal": bool(os.environ.get("FAL_KEY")), "head": pts}
 
 
 def build_head(raw):
@@ -682,6 +730,7 @@ class H(BaseHTTPRequestHandler):
             d = json.loads(raw or b"{}")
             if p == "/api/ask": return self.send(ask(d["q"], d.get("mode", "recall")))
             if p == "/api/audit": return self.send(audit())
+            if p == "/api/scan": return self.send(scan_repos())
             if p == "/api/proposal": settle(int(d["id"]), bool(d.get("accept"))); return self.send({"ok": 1})
             if p == "/api/config": return self.send(config(d))
             if p == "/api/voices": return self.send({"voices": voices()})
@@ -689,7 +738,7 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/check": return self.send(check(d["text"]))
             if p == "/api/rewrite": return self.send(rewrite(d["text"]))
             if p == "/api/say":
-                b = say(d["text"], d.get("voice_id")); return self.send(b, "audio/mpeg") if b else self.send({"error": "no voice key"}, code=503)
+                b = say(d["text"], d.get("voice_id")); return self.send(b, "audio/wav" if b[:4] == b"RIFF" else "audio/mpeg") if b else self.send({"error": "no voice key"}, code=503)
             with LOCK:
                 if p == "/api/teach":
                     if HARD.search(d["text"]): return self.send({"id": ""})

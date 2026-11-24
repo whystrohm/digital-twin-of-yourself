@@ -48,8 +48,8 @@ Click **Setup**. Three steps, each optional.
 | Step | What happens | Needs |
 |---|---|---|
 | **Face** | Drop one photo. It checks the photo and says what to fix, then builds a 3D head you can turn all the way round. | A fal key and a few Python packages. One paid build on your own account. |
-| **Voice** | Pick a voice from your ElevenLabs account and the twin speaks its answers. | An ElevenLabs key. |
-| **Notes** | Point it at a folder of Markdown notes and the git repos it may read. | Nothing. A Claude Code memory folder works as it is. |
+| **Voice** | Pick the free system voice, an ElevenLabs voice, or record a minute and clone your own. | Nothing for the system voice. An ElevenLabs key for the rest. |
+| **Notes** | Point it at a folder of notes and the repos it may read. It lists what it will read first, reads only that, and proposes rules it finds in your repos for you to approve. | Nothing. A Claude Code memory folder works as it is. |
 
 ![Setup: one photo in, the head it becomes, and the photo check result](assets/twin-setup.png)
 

@@ -8,6 +8,8 @@
 - Setup in the page: a photo check that runs before any paid step, a 3D head built from one photo (`twin/head/build.py`, needs a fal key and extra packages), a voice picked from an ElevenLabs account, a notes folder and a list of repos.
 - Ingest: when notes are read in, the head starts empty and fills note by note while a counter climbs. It plays on first run and after Setup saves a notes folder.
 - Voice cloning in Setup: record 30 to 60 seconds, tick the consent box, and the voice is made on your own ElevenLabs account.
+- A free system voice (macOS `say`, or `espeak-ng`), so the twin can speak with no account and no text leaving the machine.
+- Learn from my repos: reads the instruction files in the repos you listed and proposes their rules as notes. Setup shows exactly what will be read first.
 - A demo twin that runs with no setup: a generated face and made-up notes in `examples/twin-notes/`.
 - `docs/TWIN.md`: how to run it, connect it, what leaves the machine for each setting, and its limits today.
 - `tests/test_twin_app.py`: ten offline tests on the sample.

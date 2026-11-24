@@ -17,8 +17,8 @@ Open **Setup** in the top right.
 | Step | What you do | What it needs |
 |---|---|---|
 | 1. Face | Drop one photo. It checks the photo first and says what to fix. Then it builds a 3D head. | `FAL_KEY` in your shell, and `pip install numpy pillow trimesh opencv-python rembg`. One paid build on your own fal account. |
-| 2. Voice | Pick a voice from your ElevenLabs account, or record 30 to 60 seconds and clone your own. Cloning needs the consent box ticked and sends the recording to ElevenLabs. | `ELEVENLABS_API_KEY` in your shell. Optional. |
-| 3. Notes | Set your name, your notes folder and the git repos it may read. Then it reads the notes in, and the head fills as each one lands. | A folder of Markdown, one note per file. See `examples/twin-notes/`. |
+| 2. Voice | Pick the system voice (free, on macOS or with `espeak-ng`, and the text stays on your machine). With an ElevenLabs key you also get your account's voices and can record 30 to 60 seconds to clone your own, with the consent box ticked. | Nothing for the system voice. `ELEVENLABS_API_KEY` for the rest. Optional. |
+| 3. Notes | Set your name, your notes folder and the git repos it may read. The page lists exactly what it will read before it reads. Then the head fills as each note lands. **Learn from my repos** reads the instruction files in those repos (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `CONTRIBUTING.md`) and proposes their rules. You accept or drop each one. | A folder of Markdown, one note per file. See `examples/twin-notes/`. |
 
 No photo is fine. The twin works with the demo head and your own notes.
 
@@ -70,13 +70,18 @@ A session can only propose. Nothing becomes part of the twin until you accept it
 |---|---|---|
 | Answers: notes only (the default) | Nothing | Nowhere |
 | Answers: Claude | Your question, the few notes that match, and the work lists on the page | Claude, through your own `claude` CLI |
-| Voice on | The text of each reply | ElevenLabs, through your own key |
+| Voice on, system voice | Nothing | Nowhere |
+| Voice on, ElevenLabs voice | The text of each reply | ElevenLabs, through your own key |
 | Cloning a voice | The recording you made, once | ElevenLabs, through your own key |
 | Building the head | The cut-out photo, once | fal, through your own key |
 | The photo check, first run | A request for a small face-finder model | github.com/opencv/opencv_zoo |
 | Everything else | Nothing | A folder on your machine (`~/.twin`) |
 
 The page shows the current line in the top right at all times. The server listens on `127.0.0.1` only and refuses requests without its session token.
+
+## What it is allowed to read
+
+Only the notes folder and the repos you list in Setup. It never walks your home folder. In the repos it runs git read commands and reads tracked text files. It has no code that writes to, moves or deletes your files. Its own data lives in `~/.twin`.
 
 ## Keep things out
 
