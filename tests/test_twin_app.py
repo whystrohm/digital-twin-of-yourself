@@ -191,6 +191,30 @@ class TwinApp(unittest.TestCase):
         self.assertEqual(ev[0]["src"], "ship-days.md")
         self.assertIn("weekend", ev[0]["why"])
 
+    def test_changed_profile_and_rules_stop_model_calls(self):
+        from unittest.mock import patch
+        with patch.object(twin, "_regular_file", side_effect=OSError("selected file unavailable")), patch.object(twin, "claude") as model:
+            self.assertIn("error", twin.rewrite("Use card stock."))
+            self.assertIn("error", twin.check("Use card stock."))
+            self.assertEqual(twin.think("Which paper?", [], []), "")
+            model.assert_not_called()
+
+    def test_repo_scan_skips_an_instruction_file_removed_during_read(self):
+        from pathlib import Path
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            fp = Path(folder, "AGENTS.md")
+            fp.write_text("- Always keep packing slips in the blue folder.")
+            def resolve(path, root):
+                if path == str(fp) and fp.exists(): fp.unlink()
+                return True
+            with patch.dict(twin.CFG, repos=[folder]), patch.object(twin, "inside", side_effect=resolve):
+                self.assertEqual(twin.scan_repos()["proposed"], 0)
+
+    def test_embedded_privacy_summary_points_to_the_data_table(self):
+        self.assertIn("docs/TWIN.md", twin.__doc__)
+        self.assertNotIn("Nothing leaves this machine except", twin.__doc__)
+
     def test_no_evidence_is_an_answer(self):
         a = twin.ask("what is our policy on office plants", "recall")
         self.assertEqual(a["level"], "not enough")
