@@ -1641,7 +1641,9 @@ class H(BaseHTTPRequestHandler):
     def ok_host(self):
         return self.headers.get("Host", "") in ("127.0.0.1:%d" % CFG["port"], "localhost:%d" % CFG["port"])
 
-    def authed(self): return secrets.compare_digest(self.headers.get("X-Twin", ""), TOKEN)
+    def authed(self):
+        token = self.headers.get("X-Twin", "")
+        return token.isascii() and secrets.compare_digest(token, TOKEN)
 
     def do_GET(self):
         if not self.ok_host(): return self.send({"error": "host"}, code=403)

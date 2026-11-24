@@ -612,6 +612,13 @@ const api=async()=>({ok:true,json:async()=>({terminals:[],entries:[
     def test_draft_check_uses_the_example_rules(self):
         self.assertFalse(twin.check("I think maybe we could perhaps look at it.")["passed"])
 
+    def test_malformed_api_token_is_an_ordinary_auth_failure(self):
+        handler = object.__new__(twin.H)
+        for token in ("caf\u00e9", "", "wrong-token", twin.TOKEN):
+            with self.subTest(token_kind="valid" if token == twin.TOKEN else "invalid"):
+                handler.headers = {"X-Twin": token}
+                self.assertEqual(handler.authed(), token == twin.TOKEN)
+
     def test_http_rejects_bad_shapes_without_dispatch(self):
         import io
         from unittest.mock import Mock
