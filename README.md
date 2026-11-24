@@ -1,12 +1,12 @@
 # Digital Twin of Yourself
 
-**Stop re-explaining yourself to AI.**
+**A digital twin that knows your work.**
 
 A twin of you that runs on your machine. It remembers how you decide, what you like, how you write and what it must never do. You can see it, ask it and correct it, and every coding session you run can ask it first.
 
-![DIGITAL TWIN. A photo is dragged into a drop box and becomes a head made of dots. A chat line types: it learns your notes, answers a question, fails a hedged draft, and stops at a limit. Build yours](assets/twin-cover.webp)
+![A digital twin that knows your work. Three inputs go in: your photo becomes the head, your repos are read, your notes fill it. Then it answers "what shipped this week?" and stops at "email the supplier" with "That one needs your yes"](assets/twin-cover.webp)
 
-*A made-up person: a generated face and made-up notes. The answer, the draft check and the limit stop are the tool's real output on that sample.*
+*A made-up person: a generated face and made-up notes. The repo counts and the answer about what shipped are examples.*
 
 ![The page: the head with one note open, showing the note, the reason and the date](assets/twin.png)
 
