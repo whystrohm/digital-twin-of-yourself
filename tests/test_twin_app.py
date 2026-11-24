@@ -1539,5 +1539,48 @@ class JudgeSchemaTests(unittest.TestCase):
                 self.assertEqual(summary["twin_wins"] + summary["generic_wins"], int(valid))
 
 
+class TwinSitemapDates(unittest.TestCase):
+    def test_only_verified_twin_dates_reach_the_sitemap(self):
+        from pathlib import Path
+        from shutil import which
+
+        site = Path(os.environ.get("TWIN_SITE_TEST_ROOT", str(Path(ROOT).parent / "whystrohm-twin")))
+        generator = site / "scripts/write-route-lastmod.mjs"
+        if not which("node") or not generator.is_file():
+            self.skipTest("Requires Node and the site checkout.")
+        script = r"""
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const [generatorPath, sitemapPath] = process.argv.slice(1);
+const generator = fs.readFileSync(generatorPath, "utf8").replace(/^import .+;$/gm, "");
+const sitemap = fs.readFileSync(sitemapPath, "utf8");
+const entry = sitemap.match(/const staticEntries: MetadataRoute\.Sitemap = ([\s\S]*?);\n/)[1];
+const sha = "a".repeat(40), iso = "2026-11-24T12:00:00Z";
+for (const history of ["missing", "boundary", "verified"]) {
+  let generated;
+  const execFileSync = (_, args) => {
+    if (history === "missing") throw Error("Git unavailable");
+    if (args.includes("--git-path")) return "/fixture/shallow";
+    if (args.includes("--format=%cI")) return iso;
+    return sha + " " + iso;
+  };
+  const fixture = { execFileSync, existsSync: () => history === "boundary",
+    readFileSync: () => sha + "\n", writeFileSync: (_, body) => { generated = body; },
+    console: {log() {}}, process: {cwd: () => "/fixture"}, resolve: (...p) => p.join("/") };
+  vm.runInNewContext(generator, fixture);
+  const result = generated.match(/"\/twin":\s*"([^"]+)"/);
+  const map = result ? {"/twin": result[1]} : {};
+  const [row] = vm.runInNewContext(entry, { BASE: "", staticRoutes: [{path: "/twin"}],
+    ROUTE_LASTMOD: map, routeLastMod: () => new Date("2026-07-27T00:00:00Z") });
+  if (history === "verified") assert.equal(new Date(row.lastModified).toISOString(), new Date(iso).toISOString());
+  else assert.equal(row.lastModified, undefined, history);
+}
+"""
+        run = subprocess.run(["node", "-e", script, str(generator), str(site / "src/app/sitemap.ts")],
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
