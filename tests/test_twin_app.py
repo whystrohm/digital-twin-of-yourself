@@ -687,6 +687,40 @@ const api=async()=>({ok:true,json:async()=>({terminals:[],entries:[
                 self.assertTrue(twin.build_status().get("error"))
                 self.assertEqual((outside / "status.txt").read_text(), "PUBLISHING")
 
+    def test_head_build_refuses_linked_work_files_before_changing_any_output(self):
+        from pathlib import Path
+        from unittest.mock import patch
+        for target in ("head", "photo", "build.log", "input.jpg"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder); stage = root / "head"; other = root / "other"; other.mkdir()
+                outside = other / "file"; outside.write_bytes(b"keep this")
+                if target == "head": stage.symlink_to(other, target_is_directory=True)
+                else:
+                    stage.mkdir(); (stage / target).symlink_to(outside)
+                for name in ("head.bin", "head.json", "status.txt"): (stage / name).write_bytes(b"prior")
+                with patch.object(twin, "STORE", folder), patch.object(twin, "HEAD", str(stage)), patch.dict(twin.BUILD, proc=None):
+                    with patch.dict(os.environ, FAL_KEY="unused"), patch.object(twin.subprocess, "Popen") as start, patch.object(twin, "audit_log") as log:
+                        self.assertTrue(twin.build_head(b"test photo").get("error"))
+                        start.assert_not_called(); log.assert_not_called()
+                self.assertEqual(outside.read_bytes(), b"keep this")
+                for name in ("head.bin", "head.json", "status.txt"): self.assertEqual((stage / name).read_bytes(), b"prior")
+
+    def test_head_build_hands_the_child_its_checked_work_directory(self):
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+        with tempfile.TemporaryDirectory() as folder:
+            stage = Path(folder, "head")
+            def child(argv, **options):
+                handle, = options["pass_fds"]
+                self.assertEqual(os.fstat(handle).st_ino, stage.stat().st_ino)
+                self.assertEqual((stage / "photo").read_bytes(), b"sample photo")
+                self.assertEqual(os.fstat(options["stderr"].fileno()).st_ino, (stage / "build.log").stat().st_ino)
+                self.assertEqual(argv[-5:], ["--photo", "photo", "--consent", "--out", "."])
+                return Mock()
+            with patch.object(twin, "STORE", folder), patch.object(twin, "HEAD", str(stage)), patch.dict(twin.BUILD, proc=None):
+                with patch.dict(os.environ, FAL_KEY="unused"), patch.object(twin.subprocess, "Popen", side_effect=child), patch.object(twin, "audit_log"):
+                    self.assertEqual(twin.build_head(b"sample photo")["status"], "Starting")
+
     def test_head_submission_errors_do_not_poll_and_allow_retry(self):
         import shutil
         node = shutil.which("node")

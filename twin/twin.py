@@ -1563,18 +1563,35 @@ def _build_head(raw):
     if BUILD["proc"] and BUILD["proc"].poll() is None: return {"status": "Already building", "error": True}
     if not os.environ.get("FAL_KEY"): return {"status": "Set FAL_KEY before building a head.", "error": True}
     try:
-        os.makedirs(HEAD, exist_ok=True)
-        with _directory(HEAD): pass
-    except OSError: return {"status": "The head folder could not be opened.", "error": True}
-    if _head_status_text() == "PUBLISHING":
-        previous = _build_status()
-        if not previous.get("done"): return previous
-    for f in ("status.txt", "head.bin", "head.json"):
-        if os.path.exists(os.path.join(HEAD, f)): os.remove(os.path.join(HEAD, f))
-    Path(HEAD, "photo").write_bytes(raw)
-    py = CFG.get("builder_python") or sys.executable
-    with open(os.path.join(HEAD, "build.log"), "w") as log:
-        BUILD["proc"] = subprocess.Popen([py if os.path.exists(py) else sys.executable, os.path.join(HERE, "head", "build.py"), "--photo", os.path.join(HEAD, "photo"), "--consent", "--out", HEAD], stdout=subprocess.DEVNULL, stderr=log)
+        with _directory(os.path.dirname(HEAD)) as parent:
+            try: os.mkdir(os.path.basename(HEAD), 0o700, dir_fd=parent)
+            except FileExistsError: pass
+        with _directory(HEAD) as stage:
+            work_files = ("status.txt", "photo", "build.log", "input.jpg", "model.glb", "request.txt", "face-check.jpg") + HEAD_FILES
+            for name in work_files:
+                try: st = os.stat(name, dir_fd=stage, follow_symlinks=False)
+                except FileNotFoundError: continue
+                if not stat.S_ISREG(st.st_mode) or (st.st_nlink != 1 and name not in HEAD_FILES):
+                    return {"status": "The head folder contains a linked or unsupported file.", "error": True}
+            if _head_status_text() == "PUBLISHING":
+                previous = _build_status()
+                if not previous.get("done"): return previous
+            for name in ("status.txt", "photo", "build.log") + HEAD_FILES:
+                try: os.unlink(name, dir_fd=stage)
+                except FileNotFoundError: pass
+            create = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+            with os.fdopen(os.open("photo", create, 0o600, dir_fd=stage), "wb") as photo:
+                photo.write(raw)
+            py = CFG.get("builder_python") or sys.executable
+            # The child enters the already checked directory before running the builder.
+            enter = ("import os,sys\nfd=int(sys.argv[1])\nos.fchdir(fd)\nos.close(fd)\n"
+                     "os.execv(sys.executable,[sys.executable]+sys.argv[2:])")
+            cmd = [py if os.path.exists(py) else sys.executable, "-c", enter, str(stage),
+                   os.path.join(HERE, "head", "build.py"), "--photo", "photo", "--consent", "--out", "."]
+            with os.fdopen(os.open("build.log", create, 0o600, dir_fd=stage), "wb") as log:
+                BUILD["proc"] = subprocess.Popen(cmd, pass_fds=(stage,), stdout=subprocess.DEVNULL, stderr=log)
+    except (OSError, ValueError):
+        return {"status": "The build could not start in the head folder. Check its files and permissions.", "error": True}
     audit_log("photo consent ticked, head build started")
     return {"status": "Starting"}
 
