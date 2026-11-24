@@ -4,9 +4,11 @@
 
 A twin of you that runs on your machine. It remembers how you decide, what you like, how you write and what it must never do. You can see it, ask it and correct it, and every coding session you run can ask it first.
 
-![The twin: a head made of dots with one note open, showing the note, the reason and the date](assets/twin.png)
+![A head made of dots turns while four panels fire in turn: it remembers a note, answers from one, fails a hedged draft, and stops at a limit](assets/twin-cover.webp)
 
-*The demo twin. Maya is made up: a generated face and made-up notes. Every answer on screen is the tool's real output on that sample.*
+*The demo twin. Maya is made up: a generated face and made-up notes. Every line on screen is the tool's real output on that sample. Rebuilt by the cover script.*
+
+![The page: the head with one note open, showing the note, the reason and the date](assets/twin.png)
 
 ## Why
 
