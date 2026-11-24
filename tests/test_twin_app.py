@@ -135,6 +135,220 @@ import twin  # noqa: E402
 sys.argv = _argv
 
 
+class TwinPersistence(unittest.TestCase):
+    """Owner decisions survive retries and retain the reviewed source."""
+
+    def setUp(self):
+        import importlib.util
+        from unittest.mock import patch
+        self.tmp = tempfile.TemporaryDirectory(prefix="twin-persistence-")
+        self.addCleanup(self.tmp.cleanup)
+        for name in ("home", "data", "source", "tmp"):
+            os.mkdir(os.path.join(self.tmp.name, name))
+        self.env = patch.dict(os.environ, HOME=os.path.join(self.tmp.name, "home"),
+                              TWIN_HOME=os.path.join(self.tmp.name, "data"),
+                              TMPDIR=os.path.join(self.tmp.name, "tmp"),
+                              PYTHONDONTWRITEBYTECODE="1")
+        self.env.start(); self.addCleanup(self.env.stop)
+        with open(os.path.join(self.tmp.name, "data", "config.json"), "w") as f:
+            json.dump({"memory": os.path.join(self.tmp.name, "source"), "read_sessions": False}, f)
+        spec = importlib.util.spec_from_file_location("twin_persistence_fixture", os.path.join(ROOT, "twin", "twin.py"))
+        self.app = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.app)
+        self.addCleanup(self.app.DB.close)
+
+    def proposal(self, text="The loading gate closes at six.", source="fixture client", scope="personal"):
+        pid = self.app.propose(text, "work", source, scope)
+        return next(p for p in self.app.proposals() if p["id"] == pid)
+
+    def test_proposal_ids_are_not_reused_after_a_drop(self):
+        first = self.proposal()
+        self.app.settle(first["id"], False, uid=first["uid"])
+        second = self.proposal("The loading gate opens at seven.")
+        self.assertGreater(second["id"], first["id"])
+
+    def test_approval_checks_the_reviewed_proposal_revision(self):
+        row = self.proposal()
+        self.app.DB.execute("update proposed set text=? where id=?", ("The loading gate closes at eight.", row["id"]))
+        self.app.DB.commit()
+        result = self.app.settle(row["id"], True, uid=row["uid"], revision=row["revision"])
+        self.assertIn("error", result)
+        self.assertEqual(os.listdir(self.app.NOTES), [])
+
+    def test_approval_checks_the_reviewed_old_note_revision(self):
+        old = self.app.save_note("The loading gate closes at five.", "work", "fixture")
+        self.app.IX.sig = None
+        row = self.proposal()
+        with open(os.path.join(self.app.NOTES, old[4:] + ".md"), "a") as f:
+            f.write("\nAn owner clarification.\n")
+        result = self.app.settle(row["id"], True, True, row["uid"], old,
+                                 row["revision"], row["conflict"]["revision"])
+        self.assertIn("error", result)
+        self.assertEqual(len(os.listdir(self.app.NOTES)), 1)
+
+    def test_accept_log_keeps_source_scope_and_ids(self):
+        row = self.proposal("Loading gates remain closed. " + "Use the marked entrance. " * 18,
+                            "fixture client with a durable source", "project:warehouse")
+        self.app.settle(row["id"], True, uid=row["uid"])
+        log = self.app.DB.execute("select * from log where action='proposal accepted'").fetchone()
+        self.assertEqual(log["source"], row["source"])
+        self.assertEqual(log["scope"], row["scope"])
+        self.assertEqual(log["proposal_uid"], row["uid"])
+        self.assertTrue(log["note_id"].startswith("own:"))
+
+    def test_legacy_migration_reuses_a_staged_file_and_date(self):
+        text = "The loading gate closes at four."
+        self.app.DB.execute("insert into taught(id,text,area,created) values(?,?,?,?)", (17, text, "work", "2026-01-02T03:04:05"))
+        self.app.DB.commit()
+        self.app.save_note(text, "work", "taught in the page", uid="legacy-17", accepted="2026-01-02T03:04:05")
+        self.app.IX.sig = None
+        entries = [e for e in self.app.IX.get().e if e["title"] == text]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["since"], "2026-01-02")
+        self.assertEqual(self.app.DB.execute("select count(*) from taught").fetchone()[0], 0)
+
+    def test_acceptance_recovers_after_a_local_write_error(self):
+        from unittest.mock import patch
+        row = self.proposal()
+        original = self.app.save_note
+        def saved_then_interrupted(*args, **kwargs):
+            original(*args, **kwargs)
+            raise OSError("fixture interrupted after writing")
+        with patch.object(self.app, "save_note", side_effect=saved_then_interrupted):
+            with self.assertRaises(OSError): self.app.settle(row["id"], True, uid=row["uid"])
+        self.app.DB.close()
+        import sqlite3
+        self.app.DB = sqlite3.connect(os.path.join(self.app.STORE, "twin.db"), check_same_thread=False)
+        self.app.DB.row_factory = sqlite3.Row
+        self.addCleanup(self.app.DB.close)
+        self.app.IX.sig = None
+        entries = [e for e in self.app.IX.get().e if e["title"] == row["text"]]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(self.app.proposals(), [])
+        self.assertEqual(self.app.settle(row["id"], True, uid=row["uid"]), {"ok": 1})
+
+    def test_missing_imported_source_is_not_reported_as_restored(self):
+        path = os.path.join(self.app.CFG["memory"], "gate.md")
+        with open(path, "w") as f:
+            f.write("---\ndescription: The loading gate closes at five.\narea: work\n---\n\nThe prior decision.\n")
+        row = self.proposal()
+        old_id = row["conflict"]["id"]
+        self.app.settle(row["id"], True, True, row["uid"])
+        os.remove(path)
+        self.assertFalse(self.app.restore(old_id))
+        self.assertIsNotNone(self.app.DB.execute("select * from replaced where old_id=?", (old_id,)).fetchone())
+
+    def test_legacy_migration_preserves_an_outdated_verdict(self):
+        text = "The loading gate closes at two."
+        self.app.DB.execute("insert into taught(id,text,area,created) values(18,?,'work','2026-01-02T03:04:05')", (text,))
+        self.app.DB.execute("insert into review values('taught:18','outdated','2026-01-03T03:04:05')")
+        self.app.DB.commit(); self.app.IX.sig = None
+        self.assertNotIn(text, [e["title"] for e in self.app.IX.get().e])
+        self.assertEqual(self.app.DB.execute("select count(*) from taught").fetchone()[0], 0)
+
+    def test_replacement_recovers_after_the_old_status_was_written(self):
+        from unittest.mock import patch
+        old = self.app.save_note("The loading gate closes at five.", "work", "fixture")
+        self.app.IX.sig = None; row = self.proposal(); original = self.app.set_status
+        def changed_then_interrupted(*args, **kwargs):
+            original(*args, **kwargs)
+            raise OSError("fixture interrupted after the old status")
+        with patch.object(self.app, "set_status", side_effect=changed_then_interrupted):
+            with self.assertRaises(OSError): self.app.settle(row["id"], True, True, row["uid"])
+        self.app.recover_memory_ops(); self.app.IX.sig = None
+        titles = [e["title"] for e in self.app.IX.get().e]
+        self.assertIn(row["text"], titles)
+        self.assertNotIn("The loading gate closes at five.", titles)
+        replaced = self.app.state()["replaced"]
+        self.assertEqual(replaced[0]["old_id"], old)
+        self.assertNotIn("snapshot", replaced[0])
+        self.assertIn("revision", replaced[0])
+        self.assertFalse(self.app.restore(old, replaced[0]["by_id"], "stale revision"))
+
+    def test_restore_recovers_after_the_old_note_was_reactivated(self):
+        from unittest.mock import patch
+        old = self.app.save_note("The loading gate closes at five.", "work", "fixture")
+        self.app.IX.sig = None; row = self.proposal()
+        self.app.settle(row["id"], True, True, row["uid"]); original = self.app.set_status
+        def changed_then_interrupted(*args, **kwargs):
+            original(*args, **kwargs)
+            raise OSError("fixture interrupted during restore")
+        with patch.object(self.app, "set_status", side_effect=changed_then_interrupted):
+            with self.assertRaises(OSError): self.app.restore(old)
+        self.app.recover_memory_ops(); self.app.IX.sig = None
+        titles = [e["title"] for e in self.app.IX.get().e]
+        self.assertIn("The loading gate closes at five.", titles)
+        self.assertNotIn(row["text"], titles)
+
+    def test_imported_decision_can_be_replaced_and_restored(self):
+        path = os.path.join(self.app.CFG["memory"], "gate.md")
+        with open(path, "w") as f:
+            f.write("---\ndescription: The loading gate closes at five.\narea: work\n---\n\nThe prior decision.\n")
+        row = self.proposal(); old = row["conflict"]["id"]
+        self.app.settle(row["id"], True, True, row["uid"])
+        self.assertTrue(self.app.restore(old))
+        titles = [e["title"] for e in self.app.IX.get().e]
+        self.assertIn("The loading gate closes at five.", titles)
+        self.assertNotIn(row["text"], titles)
+        self.assertEqual(self.app.DB.execute("select count(*) from memory_ops where state='pending'").fetchone()[0], 0)
+        newer = self.app.state()["replaced"][0]
+        self.assertTrue(self.app.restore(newer["old_id"], newer["by_id"], newer["revision"]))
+        titles = [e["title"] for e in self.app.IX.get().e]
+        self.assertIn(row["text"], titles)
+        self.assertNotIn("The loading gate closes at five.", titles)
+
+    def test_pending_replacement_preserves_an_owner_edit(self):
+        from unittest.mock import patch
+        old = self.app.save_note("The loading gate closes at five.", "work", "fixture")
+        self.app.IX.sig = None; row = self.proposal(); original = self.app.save_note
+        def saved_then_interrupted(*args, **kwargs):
+            original(*args, **kwargs)
+            raise OSError("fixture interrupted before replacing")
+        with patch.object(self.app, "save_note", side_effect=saved_then_interrupted):
+            with self.assertRaises(OSError): self.app.settle(row["id"], True, True, row["uid"])
+        path = os.path.join(self.app.NOTES, old[4:] + ".md")
+        with open(path, "a") as f: f.write("\nAn owner edit after interruption.\n")
+        before = self.app.read_note(path, self.app.NOTES)
+        self.app.recover_memory_ops(); self.app.IX.sig = None
+        self.assertEqual(self.app.read_note(path, self.app.NOTES), before)
+        self.assertNotIn(row["text"], [e["title"] for e in self.app.IX.get().e])
+        self.assertEqual(self.app.DB.execute("select count(*) from memory_ops where state='pending'").fetchone()[0], 0)
+        self.assertNotEqual(self.app.proposals()[0]["uid"], row["uid"])
+
+    def test_pending_replacement_cannot_follow_a_source_switch(self):
+        from unittest.mock import patch
+        path = os.path.join(self.app.CFG["memory"], "gate.md")
+        with open(path, "w") as f:
+            f.write("---\ndescription: The loading gate closes at five.\narea: work\n---\n\nThe prior decision.\n")
+        row = self.proposal(); original = self.app.save_note
+        def saved_then_interrupted(*args, **kwargs):
+            original(*args, **kwargs)
+            raise OSError("fixture interrupted before replacing")
+        with patch.object(self.app, "save_note", side_effect=saved_then_interrupted):
+            with self.assertRaises(OSError): self.app.settle(row["id"], True, True, row["uid"])
+        other = os.path.join(self.app.HOME, "other-notes"); os.mkdir(other)
+        with open(os.path.join(other, "gate.md"), "w") as f:
+            f.write("---\ndescription: The packing line opens at nine.\narea: work\n---\n\nAn unrelated decision.\n")
+        with open(self.app.CFG_PATH, "w") as f: json.dump(dict(self.app.CFG, memory=other), f)
+        self.app.sync_cfg(); self.app.recover_memory_ops(); self.app.IX.sig = None
+        titles = [e["title"] for e in self.app.IX.get().e]
+        self.assertIn("The packing line opens at nine.", titles)
+        self.assertNotIn(row["text"], titles)
+        self.assertEqual(self.app.DB.execute("select count(*) from memory_ops where state='pending'").fetchone()[0], 0)
+
+    def test_imported_verdicts_do_not_follow_a_same_named_file(self):
+        path = os.path.join(self.app.CFG["memory"], "gate.md")
+        with open(path, "w") as f: f.write("---\ndescription: The gate closes at five.\narea: work\n---\n")
+        old = next(e for e in self.app.IX.get().e if e["src"] == "gate.md")
+        self.app.DB.execute("insert into review values(?,'outdated','2026-01-03T03:04:05')", (old["id"],))
+        self.app.DB.execute("insert into review values('gate','outdated','2026-01-03T03:04:05')")
+        self.app.DB.commit()
+        other = os.path.join(self.app.HOME, "other-notes"); os.mkdir(other)
+        with open(os.path.join(other, "gate.md"), "w") as f:
+            f.write("---\ndescription: The packing line opens at nine.\narea: work\n---\n")
+        with open(self.app.CFG_PATH, "w") as f: json.dump(dict(self.app.CFG, memory=other), f)
+        self.app.sync_cfg(); self.app.IX.sig = None
+        self.assertIn("The packing line opens at nine.", [e["title"] for e in self.app.IX.get().e])
+
 class TwinApp(unittest.TestCase):
     @unittest.skipUnless(
         os.path.isfile(os.path.join(os.environ.get("TWIN_SITE_TEST_ROOT", os.path.join(os.path.dirname(ROOT), "whystrohm-twin")), "src", "app", "twin", "page.tsx")),
@@ -219,6 +433,23 @@ class TwinApp(unittest.TestCase):
         a = twin.ask("what is our policy on office plants", "recall")
         self.assertEqual(a["level"], "not enough")
         self.assertEqual(a["sources"], [])
+
+    def test_review_buttons_submit_the_versions_that_were_shown(self):
+        from pathlib import Path
+        ui = Path(ROOT, "twin", "ui.html").read_text()
+        for value in ("p.revision", "p.conflict.revision", "old_revision:", "x.revision", "by_id:"):
+            with self.subTest(value=value): self.assertIn(value, ui)
+        self.assertIn("revision:", ui.split("api('restore'", 1)[1].split(")).json()", 1)[0])
+
+    def test_restore_without_reviewed_version_is_rejected(self):
+        import io
+        from unittest.mock import Mock, patch
+        raw = b'{"id":"obsolete"}'
+        request = Mock(path="/api/restore", headers={"Content-Length": str(len(raw))}, rfile=io.BytesIO(raw))
+        with patch.object(twin, "restore") as restore:
+            twin.H.do_POST(request)
+            self.assertEqual(request.send.call_args.kwargs.get("code"), 400)
+            restore.assert_not_called()
 
     def test_push_needs_a_yes(self):
         self.assertTrue(twin.ask("push the site live", "recall")["gate"])

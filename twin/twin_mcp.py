@@ -32,6 +32,7 @@ CLIENT = ["a coding session"]
 
 
 def recall(q, project=""):
+    twin.sync_cfg()
     if twin.HARD.search(q): return {"evidence": "none", "note": "That is outside this workspace."}
     level, ev = twin.IX.search(q, project=project)
     return {"evidence": level, "notes": [{"note": e["title"], "why": e["why"], "since": e["since"], "source": e["src"], "scope": e.get("scope", "personal")} for e in ev[:4]]}
@@ -61,7 +62,10 @@ for line in sys.stdin:
         if not t: reply(i, error={"code": -32602, "message": "Unknown tool"}); continue
         try:
             twin.sync_cfg()                      # settings may have changed in the page since this session started
-            out = t[2](p.get("arguments") or {}); twin.client_seen(CLIENT[0], p.get("name")); reply(i, {"content": [{"type": "text", "text": out if isinstance(out, str) else json.dumps(out, indent=1)}]})
-        except Exception as e: reply(i, {"content": [{"type": "text", "text": "The twin could not answer: " + type(e).__name__}], "isError": True})
+            out = t[2](p.get("arguments") or {}); twin.client_seen(CLIENT[0], p.get("name"), "ok"); reply(i, {"content": [{"type": "text", "text": out if isinstance(out, str) else json.dumps(out, indent=1)}]})
+        except Exception as e:
+            try: twin.client_seen(CLIENT[0], p.get("name"), "error")
+            except Exception: pass
+            reply(i, {"content": [{"type": "text", "text": "The twin could not answer: " + type(e).__name__}], "isError": True})
     elif meth == "ping": reply(i, {})
     elif i is not None: reply(i, error={"code": -32601, "message": "Method not found"})

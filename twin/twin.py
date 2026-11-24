@@ -150,11 +150,22 @@ create table if not exists replaced(old_id text primary key, title text, by_id t
 create table if not exists clients(name text primary key, last_at text, last_tool text, calls integer);
 create table if not exists log(id integer primary key, at text, action text, detail text);
 create table if not exists proposed(id integer primary key, text text, area text, source text, created text);
+create table if not exists memory_ops(uid text primary key, kind text, payload text, state text);
+create table if not exists proposal_sequence(id integer primary key, last_id integer);
 """)
 os.chmod(os.path.join(STORE, "twin.db"), 0o600)
 for _col in ("scope text default 'personal'", "uid text default ''"):
     try: DB.execute("alter table proposed add column " + _col)
     except sqlite3.OperationalError: pass
+for _table, _cols in (("log", ("source", "scope", "proposal_uid", "note_id", "result", "operation_uid")),
+                      ("replaced", ("snapshot",)), ("clients", ("last_result",))):
+    _existing = {r[1] for r in DB.execute("pragma table_info(%s)" % _table)}
+    for _col in _cols:
+        if _col not in _existing:
+            try: DB.execute("alter table %s add column %s text default ''" % (_table, _col))
+            except sqlite3.OperationalError:
+                if _col not in {r[1] for r in DB.execute("pragma table_info(%s)" % _table)}: raise
+DB.commit()
 if os.path.islink(os.path.join(STORE, "notes")): raise SystemExit("The notes folder inside the twin's data folder is a link. Remove it and start again.")
 NOTES = os.path.join(STORE, "notes"); os.makedirs(NOTES, exist_ok=True)
 
@@ -289,10 +300,12 @@ def _write_at(parent, name, text, replace=False, expected=None):
         except FileNotFoundError: pass
 
 
-def audit_log(action, detail=""):
+def audit_log(action, detail="", source="", scope="", proposal_uid="", note_id="", result="", operation_uid="", commit=True):
     """What changed the twin, and when. Read it with: python3 twin.py log"""
-    with LOCK:
-        DB.execute("insert into log(at,action,detail) values(?,?,?)", (now(), action, str(detail)[:300])); DB.commit()
+    with locked():
+        DB.execute("insert into log(at,action,detail,source,scope,proposal_uid,note_id,result,operation_uid) values(?,?,?,?,?,?,?,?,?)",
+                   (now(), action, str(detail), str(source), str(scope), str(proposal_uid), str(note_id), str(result), str(operation_uid)))
+        if commit: DB.commit()
 
 
 SECRET = re.compile(r"(sk|fal|ghp|gho|pat|key|xi)[-_][A-Za-z0-9_\-]{16,}|\b[A-Fa-f0-9]{40,}\b")
@@ -341,7 +354,7 @@ def note_body(raw):
 
 def _scalar(value):
     value = str(value)
-    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_ ./-]*", value) and value.lower() not in ("true", "false", "yes", "no", "null", "none"):
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_ ./-]*", value) and value.lower() not in ("true", "false", "yes", "no", "on", "off", "y", "n", "null", "none"):
         return value
     return json.dumps(value, ensure_ascii=False)
 
@@ -350,6 +363,18 @@ def _note_name(note_id):
     if not isinstance(note_id, str) or not re.fullmatch(r"own:[A-Za-z0-9][A-Za-z0-9_.-]{0,210}", note_id):
         raise ValueError("Invalid note id.")
     return note_id[4:] + ".md"
+
+
+def _note_reference(note_id):
+    """Validate a metadata reference. Only _note_name may turn an own id into a path."""
+    if not isinstance(note_id, str): raise ValueError("Invalid note reference.")
+    if note_id.startswith("own:"):
+        _note_name(note_id)
+    elif note_id.startswith("source:"):
+        if not re.fullmatch(r"source:[0-9a-f]{16}:[^/\\\x00\r\n]{1,210}", note_id): raise ValueError("Invalid source reference.")
+    elif not re.fullmatch(r"[^/\\\x00\r\n:]{1,210}", note_id):
+        raise ValueError("Invalid note reference.")
+    return note_id
 
 
 def _calendar_date(value, fallback):
@@ -406,7 +431,7 @@ def set_status(note_id, status, by=""):
         if not hd: return False
         lines = [line for line in hd.splitlines() if not re.match(r"^(status|replaced_by):", line)]
         if status == "replaced":
-            _note_name(by)
+            _note_reference(by)
             lines += ["status: replaced", "replaced_by: " + _scalar(by)]
         changed = "---\n" + "\n".join(lines) + "\n---\n" + note_body(raw)
         with _directory(NOTES) as parent:
@@ -503,9 +528,7 @@ def load_entries():
                         "src": os.path.basename(CFG["rules"]), "stale": "", "body": desc})
     except Exception:
         pass
-    for r in list(DB.execute("select * from taught")):          # older versions kept taught notes in the database: move them to files
-        save_note(r["text"], r["area"], "taught in the page"); DB.execute("delete from taught where id=?", (r["id"],))
-    DB.commit()
+    migrate_legacy_notes()
     for path in own_files():
         try:
             raw = read_note(path, NOTES)
@@ -714,7 +737,7 @@ def state():
     sync_cfg(); e = IX.get().e
     return {"name": CFG["name"], "areas": AREAS, "now": now(),
             "entries": [dict({k: x[k] for k in ("id", "area", "title", "why", "since", "mod", "src", "stale")}, scope=x.get("scope", "personal")) for x in e],
-            "replaced": [dict(r) for r in DB.execute("select * from replaced order by at desc limit 30")], "clients": clients(),
+            "replaced": [dict({k: r[k] for k in ("old_id", "title", "by_id", "at")}, revision=replacement_revision(r)) for r in DB.execute("select * from replaced order by at desc limit 30")], "clients": clients(),
             "terminals": cached("t", 4, terminals)[0], "hidden": cached("t", 4, terminals)[1], "repos": cached("r", 30, repos), "shipped": shipped(), "priorities": priorities(),
             "workspace": CFG.get("workspace", ""), "proposals": proposals(), "sessions_on": bool(CFG.get("read_sessions", True)), "voice_local": CFG.get("voice_id") == "system", "voice": (CFG.get("voice_id") == "system" and bool(sys_voice())) or (bool(os.environ.get("ELEVENLABS_API_KEY")) and bool(CFG.get("voice_id"))), "whisper": can_listen()}
 
@@ -948,6 +971,165 @@ def listen(blob):
 # ------------------------------------------------------------------ proposals from sessions, and the audit
 
 
+def proposal_revision(row):
+    fields = {k: row[k] for k in ("id", "uid", "text", "area", "source", "scope", "created")}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def entry_revision(entry):
+    try:
+        if entry["id"].startswith("own:"): return own_note_revision(entry["id"])
+        if entry["id"].startswith("rule:"): return ""
+        name = entry["src"]
+        if os.path.basename(name) != name: return ""
+        return hashlib.sha256(read_note(os.path.join(CFG["memory"], name), CFG["memory"]).encode()).hexdigest()
+    except (OSError, ValueError): return ""
+
+
+def note_snapshot(entry):
+    return dict(entry, revision=entry_revision(entry),
+                source_root=os.path.realpath(NOTES if entry["id"].startswith("own:") else CFG["memory"]))
+
+
+def stable_note_id(text, uid, accepted):
+    existing = [p for p in own_files() if os.path.basename(p).endswith("-" + uid + ".md")]
+    if len(existing) > 1: raise ValueError("More than one file has this note operation id.")
+    if existing: return "own:" + os.path.basename(existing[0])[:-3]
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower())[:48].strip("-") or "note"
+    return "own:%s-%s-%s" % (accepted[:10], slug, uid)
+
+
+def _begin_memory_op(uid, kind, payload):
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    row = DB.execute("select * from memory_ops where uid=?", (uid,)).fetchone()
+    if row:
+        if row["kind"] != kind or row["payload"] != raw: raise ValueError("The saved decision differs from this request.")
+        return row
+    DB.execute("insert into memory_ops values(?,?,?,?)", (uid, kind, raw, "pending")); DB.commit()
+    return DB.execute("select * from memory_ops where uid=?", (uid,)).fetchone()
+
+
+class MemoryConflict(ValueError):
+    """A saved decision no longer refers to the source the owner reviewed."""
+
+
+def _snapshot_matches(snapshot):
+    if not snapshot or not snapshot.get("revision"): return False
+    root = NOTES if snapshot["id"].startswith("own:") else CFG["memory"]
+    if snapshot.get("source_root") != os.path.realpath(root): return False
+    return entry_revision(snapshot) == snapshot["revision"]
+
+
+def _reconcile_memory_conflict(row, error):
+    """Retain a failed intent for review and undo only file markers made by that intent."""
+    DB.rollback(); p = json.loads(row["payload"]); kind = row["kind"]
+    old = p.get("old"); nid = p.get("note_id", "")
+    def own_raw(note_id):
+        if not note_id or not note_id.startswith("own:"): return ""
+        try: return read_note(os.path.join(NOTES, note_id[4:] + ".md"), NOTES)
+        except (OSError, ValueError): return ""
+    if kind == "accept":
+        raw_old = own_raw(old["id"]) if old else ""
+        if raw_old and fm(raw_old, "status") == "replaced" and fm(raw_old, "replaced_by") == nid:
+            set_status(old["id"], "active")
+        raw_new = own_raw(nid)
+        body = note_body(raw_new)
+        if body.startswith("\n"): body = body[1:]
+        expected = p["text"] if p["text"].endswith("\n") else p["text"] + "\n"
+        if (raw_new and fm(raw_new, "uid") == p["note_uid"] and body == expected and
+                fm(raw_new, "source") == p["source"] and fm(raw_new, "accepted") == p["accepted"]):
+            set_status(nid, "replaced", old["id"] if old else nid)
+        DB.execute("update proposed set uid=? where id=? and uid=?",
+                   (secrets.token_hex(16), p["proposal_id"], p["proposal_uid"]))
+    elif kind == "restore":
+        by = p["by"]; raw_old = own_raw(old["id"]); raw_by = own_raw(by["id"])
+        if raw_old and _snapshot_matches(old) and fm(raw_old, "status") != "replaced":
+            set_status(old["id"], "replaced", by["id"])
+        if raw_by and fm(raw_by, "status") == "replaced" and fm(raw_by, "replaced_by") == old["id"]:
+            set_status(by["id"], "active")
+    DB.execute("update memory_ops set state='conflict' where uid=?", (row["uid"],))
+    audit_log("memory decision needs review", str(error), source=p.get("source", old.get("src", "") if old else ""),
+              scope=p.get("scope", old.get("scope", "personal") if old else "personal"), proposal_uid=p.get("proposal_uid", ""),
+              note_id=nid or (old["id"] if old else ""), result="conflict", operation_uid=row["uid"], commit=False)
+    DB.commit(); IX.sig = None
+
+
+def _finish_memory_op(row):
+    """Replay an already approved decision. Files land before its single completion commit."""
+    if row["state"] != "pending": return
+    p = json.loads(row["payload"]); kind = row["kind"]; op_uid = row["uid"]
+    try:
+        if kind in ("accept", "migrate"):
+            old = p.get("old")
+            if old and not _snapshot_matches(old): raise MemoryConflict("The old note or its source changed. Review this decision again.")
+            nid = save_note(p["text"], p["area"], p["source"], p["scope"], old["title"] if old else "",
+                            uid=p["note_uid"], note_id=p["note_id"], accepted=p["accepted"])
+            if old:
+                if old["id"].startswith("own:"):
+                    if not set_status(old["id"], "replaced", nid): raise OSError("The old note is unavailable. The decision is pending recovery.")
+                else: DB.execute("insert or replace into review values(?,?,?)", (old["id"], "outdated", p["accepted"]))
+                DB.execute("insert or replace into replaced(old_id,title,by_id,at,snapshot) values(?,?,?,?,?)",
+                           (old["id"], old["title"], nid, p["accepted"], json.dumps(old, ensure_ascii=False)))
+                audit_log("note replaced", old["title"], source=old.get("src", ""), scope=old.get("scope", "personal"),
+                          proposal_uid=p.get("proposal_uid", ""), note_id=nid, result="ok", operation_uid=op_uid, commit=False)
+            if kind == "accept":
+                DB.execute("delete from proposed where id=? and uid=?", (p["proposal_id"], p["proposal_uid"]))
+                action = "proposal accepted"
+            else:
+                DB.execute("delete from taught where id=? and text=?", (p["legacy_id"], p["text"]))
+                if p.get("review"):
+                    DB.execute("insert or replace into review values(?,?,?)", (nid, p["review"]["verdict"], p["review"]["at"]))
+                    DB.execute("delete from review where key=?", ("taught:%d" % p["legacy_id"],))
+                action = "legacy note migrated"
+            audit_log(action, p["text"], source=p["source"], scope=p["scope"], proposal_uid=p.get("proposal_uid", ""),
+                      note_id=nid, result="ok", operation_uid=op_uid, commit=False)
+        elif kind == "drop":
+            DB.execute("delete from proposed where id=? and uid=?", (p["proposal_id"], p["proposal_uid"]))
+            audit_log("proposal dropped", p["text"], source=p["source"], scope=p["scope"], proposal_uid=p["proposal_uid"],
+                      result="ok", operation_uid=op_uid, commit=False)
+        elif kind == "restore":
+            old, by = p["old"], p["by"]
+            if not _snapshot_matches(old) or not _snapshot_matches(by):
+                raise MemoryConflict("A note or source changed before restore completed. Review it again.")
+            if old["id"].startswith("own:"):
+                if not set_status(old["id"], "active"): raise OSError("The note to restore is unavailable.")
+            else: DB.execute("delete from review where key=?", (old["id"],))
+            if by["id"].startswith("own:"):
+                if not set_status(by["id"], "replaced", old["id"]): raise OSError("The newer note is unavailable.")
+            else: DB.execute("insert or replace into review values(?,?,?)", (by["id"], "outdated", p["accepted"]))
+            DB.execute("insert or replace into replaced(old_id,title,by_id,at,snapshot) values(?,?,?,?,?)",
+                       (by["id"], by["title"], old["id"], p["accepted"], json.dumps(by, ensure_ascii=False)))
+            DB.execute("delete from replaced where old_id=?", (old["id"],))
+            audit_log("note restored", old["title"], source=old.get("src", ""), scope=old.get("scope", "personal"),
+                      note_id=old["id"], result="ok", operation_uid=op_uid, commit=False)
+        else: raise ValueError("Unknown saved memory operation.")
+        DB.execute("update memory_ops set state='done' where uid=?", (op_uid,)); DB.commit(); IX.sig = None
+    except Exception:
+        DB.rollback(); IX.sig = None
+        raise
+
+
+def recover_memory_ops():
+    with locked():
+        sync_cfg()
+        for row in list(DB.execute("select * from memory_ops where state='pending' order by rowid")):
+            try: _finish_memory_op(row)
+            except (OSError, ValueError) as error: _reconcile_memory_conflict(row, error)
+
+
+def migrate_legacy_notes():
+    """A repeatable upgrade. Keep the old row until its file and migration record are complete."""
+    with locked():
+        recover_memory_ops()
+        for r in list(DB.execute("select * from taught order by id")):
+            uid = "legacy-%d" % r["id"]; accepted = r["created"] or now()
+            review = DB.execute("select verdict,at from review where key=?", ("taught:%d" % r["id"],)).fetchone()
+            payload = {"legacy_id": r["id"], "text": r["text"], "area": r["area"], "source": "taught in the page",
+                       "scope": "personal", "accepted": accepted, "note_uid": uid,
+                       "note_id": stable_note_id(r["text"], uid, accepted), "review": dict(review) if review else None}
+            _finish_memory_op(_begin_memory_op("migrate:" + uid, "migrate", payload))
+
+
 def conflict(text, area, scope=None):
     """An existing note in the same area that says something close enough to clash. Notes for two different projects may disagree, so those are not offered. Checker rules are never offered."""
     w = set(toks(text)); best = None
@@ -955,26 +1137,53 @@ def conflict(text, area, scope=None):
         if e["area"] != area or e["title"] == text or e["id"].startswith("rule:") or (scope and scope.startswith("project:") and e.get("scope", "personal").startswith("project:") and e.get("scope") != scope): continue      # two different projects may disagree
         t = set(toks(e["title"])); sh = len(w & t)
         if sh >= 2 and sh / max(1, min(len(w), len(t))) >= .5 and (not best or sh > best[0]): best = (sh, e)
-    return {"id": best[1]["id"], "title": best[1]["title"], "src": best[1]["src"]} if best else None
+    if not best: return None
+    e = best[1]
+    return {"id": e["id"], "title": e["title"], "src": e["src"], "scope": e.get("scope", "personal"), "revision": entry_revision(e)}
 
 
-def restore(old_id):
+def replacement_revision(row):
+    fields = {k: row[k] for k in ("old_id", "title", "by_id", "at", "snapshot")}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def restore(old_id, by_id=None, revision=None):
     """Brings a replaced note back. The note that had replaced it is marked replaced in turn, so only one stays active."""
     with locked():
+        sync_cfg(); recover_memory_ops()
         r = DB.execute("select * from replaced where old_id=?", (old_id,)).fetchone()
         if not r: return False
-        if not set_status(old_id, "active"): DB.execute("delete from review where key=?", (old_id,))
-        by = r["by_id"] or ""; bp = os.path.join(NOTES, by[4:] + ".md")
-        if by.startswith("own:") and os.path.isfile(bp) and not os.path.islink(bp):
-            with open(bp) as f: bt = fm(f.read(), "description")
-            if set_status(by, "replaced", old_id): DB.execute("insert or replace into replaced values(?,?,?,?)", (by, bt, old_id, now()))
-        DB.execute("delete from replaced where old_id=?", (old_id,)); DB.commit()
-    audit_log("note restored", r["title"]); IX.sig = None; return True
+        if (by_id is not None and r["by_id"] != by_id) or (revision is not None and replacement_revision(r) != revision): return False
+        if old_id.startswith("rule:"): return False
+        try:
+            old = json.loads(r["snapshot"] or "{}")
+            root = NOTES if old_id.startswith("own:") else CFG["memory"]
+            if old.get("source_root") and old["source_root"] != os.path.realpath(root): return False
+            name = old_id[4:] + ".md" if old_id.startswith("own:") else old.get("src", old_id + ".md")
+            if os.path.basename(name) != name: return False
+            raw = read_note(os.path.join(root, name), root)
+            if HARD.search(raw) or EXCL.search(fm(raw, "description")): return False
+            old.update(id=old_id, title=old.get("title", r["title"]), src=old.get("src", name),
+                       scope=old.get("scope", fm(raw, "scope") or "personal"))
+            current = entry_revision(old)
+            if not current or (old.get("revision") and old["revision"] != current): return False
+            old["revision"] = current
+            newer_id = r["by_id"] or ""
+            counterpart = next((e for e in IX.get().e if e["id"] == newer_id and not e["id"].startswith("rule:")), None)
+            if not counterpart: return False
+            by = note_snapshot(counterpart)
+            if not by["revision"]: return False
+            payload = {"old": old, "by": by, "accepted": now()}
+        except (OSError, ValueError): return False
+        _finish_memory_op(_begin_memory_op("restore:" + secrets.token_hex(16), "restore", payload))
+        return True
 
 
-def client_seen(name, tool):
-    with LOCK:
-        DB.execute("insert into clients values(?,?,?,1) on conflict(name) do update set last_at=excluded.last_at,last_tool=excluded.last_tool,calls=calls+1", (str(name)[:60] or "unknown", now(), tool)); DB.commit()
+def client_seen(name, tool, result="called"):
+    """Record a client's self-reported label and its last completed tool result."""
+    with locked():
+        DB.execute("insert into clients(name,last_at,last_tool,calls,last_result) values(?,?,?,1,?) on conflict(name) do update set last_at=excluded.last_at,last_tool=excluded.last_tool,calls=calls+1,last_result=excluded.last_result",
+                   (str(name)[:60] or "unknown", now(), str(tool), str(result))); DB.commit()
 
 
 def clients():
@@ -1032,36 +1241,63 @@ def export(dest):
 
 
 def propose(text, area, source, scope="personal"):
-    text = redact(" ".join(str(text).split()))[:500]
-    if not text or HARD.search(text + " " + source) or DENY.search(text): return None
+    if not isinstance(text, str) or not isinstance(source, str): return None
+    text = redact(" ".join(text.split()))[:500]
+    if not isinstance(scope, str) or not re.fullmatch(r"personal|brand|project:[\w.-]{1,60}", scope or "personal"): return None
     with locked():
-        c = DB.execute("insert into proposed(text,area,source,created,scope,uid) values(?,?,?,?,?,?)",
-                       (text, area if area in AREAS else "decisions", redact(source)[:80], now(), scope or "personal", secrets.token_hex(8))); DB.commit()
-    return c.lastrowid
+        sync_cfg()
+        if not text or HARD.search(text + " " + source) or DENY.search(text): return None
+        last = DB.execute("select coalesce(max(id),0) from proposed").fetchone()[0]
+        DB.execute("insert or ignore into proposal_sequence values(1,?)", (last,))
+        DB.execute("update proposal_sequence set last_id=max(last_id,?)+1 where id=1", (last,))
+        pid = DB.execute("select last_id from proposal_sequence where id=1").fetchone()[0]
+        DB.execute("insert into proposed(id,text,area,source,created,scope,uid) values(?,?,?,?,?,?,?)",
+                   (pid, text, area if area in AREAS else "decisions", redact(source)[:80], now(), scope or "personal", secrets.token_hex(16))); DB.commit()
+    return pid
 
 
-def proposals(): return [dict(r, conflict=conflict(r["text"], r["area"], r["scope"])) for r in DB.execute("select * from proposed order by id desc limit 40")]
+def proposals():
+    with locked():
+        sync_cfg(); recover_memory_ops()
+        for r in list(DB.execute("select id from proposed where uid='' or uid is null")):
+            DB.execute("update proposed set uid=? where id=?", (secrets.token_hex(16), r["id"]))
+        DB.commit()
+        return [dict(r, revision=proposal_revision(r), conflict=conflict(r["text"], r["area"], r["scope"]))
+                for r in list(DB.execute("select * from proposed order by id desc limit 40"))]
 
 
-def settle(pid, accept, replace=False, uid=None, old_id=None):
+def settle(pid, accept, replace=False, uid=None, old_id=None, revision=None, old_revision=None):
     """The owner's decision on one proposal. uid ties it to the exact proposal that was on screen, old_id to the exact note it
     offered to replace. If either changed since, nothing is done. Every step can be repeated after a crash without a duplicate."""
     with locked():
+        sync_cfg(); recover_memory_ops()
         r = DB.execute("select * from proposed where id=?", (pid,)).fetchone()
-        if not r or (uid is not None and r["uid"] != uid): return {"error": "That proposal changed. Reload and choose again."}
+        if not r:
+            if uid:
+                done = DB.execute("select * from memory_ops where uid=? and state='done'", ("proposal:" + uid,)).fetchone()
+                if done and json.loads(done["payload"]).get("proposal_id") == pid and done["kind"] == ("accept" if accept else "drop"): return {"ok": 1}
+            return {"error": "That proposal changed. Reload and choose again."}
+        if not r["uid"]:
+            DB.execute("update proposed set uid=? where id=?", (secrets.token_hex(16), pid)); DB.commit()
+            r = DB.execute("select * from proposed where id=?", (pid,)).fetchone()
+        if (uid is not None and r["uid"] != uid) or (revision is not None and proposal_revision(r) != revision):
+            return {"error": "That proposal changed. Reload and choose again."}
+        old = None
         if accept:
-            old = None
             if replace:
-                old = conflict(r["text"], r["area"], r["scope"])
-                if not old or (old_id is not None and old["id"] != old_id): return {"error": "Your notes changed since you looked. Reload and choose again."}
-            nid = save_note(r["text"], r["area"], r["source"], r["scope"], old["title"] if old else "", r["uid"] or "")
-            if old:
-                if not set_status(old["id"], "replaced", nid): DB.execute("insert or replace into review values(?,?,?)", (old["id"], "outdated", now()))
-                DB.execute("insert or replace into replaced values(?,?,?,?)", (old["id"], old["title"], nid, now()))
-                DB.execute("insert into log(at,action,detail) values(?,?,?)", (now(), "note replaced", ("%s -> %s" % (old["title"], r["text"]))[:300]))
-        DB.execute("insert into log(at,action,detail) values(?,?,?)", (now(), "proposal accepted" if accept else "proposal dropped", ("from %s | %s | %s" % (r["source"], r["scope"], r["text"]))[:300]))
-        DB.execute("delete from proposed where id=?", (pid,)); DB.commit()          # one commit: the log, the replacement record and the removal land together
-        IX.sig = None
+                candidate = conflict(r["text"], r["area"], r["scope"])
+                if not candidate or (old_id is not None and candidate["id"] != old_id):
+                    return {"error": "Your notes changed since you looked. Reload and choose again."}
+                entry = next((e for e in IX.get().e if e["id"] == candidate["id"]), None)
+                if not entry or entry["id"].startswith("rule:"): return {"error": "Change checker rules through the rules profile."}
+                old = note_snapshot(entry)
+                if not old["revision"] or (old_revision is not None and old["revision"] != old_revision):
+                    return {"error": "Your notes changed since you looked. Reload and choose again."}
+        accepted = now()
+        payload = {"proposal_id": pid, "proposal_uid": r["uid"], "text": r["text"], "area": r["area"],
+                   "source": r["source"], "scope": r["scope"], "accepted": accepted, "note_uid": r["uid"],
+                   "note_id": stable_note_id(r["text"], r["uid"], accepted), "old": old}
+        _finish_memory_op(_begin_memory_op("proposal:" + r["uid"], "accept" if accept else "drop", payload))
     return {"ok": 1}
 
 
@@ -1381,11 +1617,18 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/proposal":
                 if not isinstance(d.get("accept"), bool) or not isinstance(d.get("replace", False), bool):
                     raise ValueError("expected a choice")
+                if not isinstance(d.get("uid"), str) or not d["uid"] or not d.get("revision"):
+                    raise ValueError("missing proposal revision")
+                if d.get("replace") and not (d.get("old_id") and d.get("old_revision")):
+                    raise ValueError("missing note revision")
             if p == "/api/ask": return self.send(ask(d["q"], d.get("mode", "recall")))
             if p == "/api/audit": return self.send(audit())
             if p == "/api/scan": return self.send(scan_repos())
-            if p == "/api/proposal": return self.send(settle(int(d["id"]), d.get("accept") is True, d.get("replace") is True, str(d["uid"]), d.get("old_id")))
-            if p == "/api/restore": return self.send({"ok": restore(str(d["id"]))})
+            if p == "/api/proposal": return self.send(settle(int(d["id"]), d.get("accept") is True, d.get("replace") is True, d["uid"], d.get("old_id"), d["revision"], d.get("old_revision")))
+            if p == "/api/restore":
+                if not all(isinstance(d.get(k), str) and d[k] for k in ("id", "by_id", "revision")):
+                    raise ValueError("missing restore revision")
+                return self.send({"ok": restore(d["id"], d["by_id"], d["revision"])})
             if p == "/api/config": return self.send(config(d))
             if p == "/api/voices": return self.send({"voices": voices()})
             if p == "/api/setup/status": return self.send(build_status())
