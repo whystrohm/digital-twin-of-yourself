@@ -8,10 +8,16 @@ Speech to text runs here with whisper-cli. Recall mode uses no model at all.
 """
 import glob, hashlib, json, os, re, secrets, sqlite3, subprocess, sys, tempfile, threading, time
 import contextlib
+import stat
 from pathlib import Path
 import urllib.request
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+if (os.open not in os.supports_dir_fd or os.stat not in os.supports_dir_fd or
+        os.link not in os.supports_dir_fd or os.listdir not in os.supports_fd or
+        not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK"))):
+    raise SystemExit("Digital Twin requires confined file access available on macOS and Linux. Native Windows is not supported; use a supported POSIX environment.")
 
 HOME = os.path.expanduser("~")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -137,6 +143,90 @@ def inside(path, root):
     return rp == rr or rp.startswith(rr + os.sep)
 
 
+@contextlib.contextmanager
+def _directory(path):
+    """Open directory components without links, apart from the two macOS system aliases."""
+    if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("This platform does not support confined file access.")
+    parts = os.path.abspath(path).split(os.sep)
+    parts = [p for p in parts if p]
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    anchor = os.sep
+    if parts and sys.platform == "darwin" and parts[0] in ("tmp", "var"):
+        alias = os.sep + parts[0]
+        if os.path.islink(alias) and os.path.realpath(alias) == "/private" + alias:
+            anchor = "/private" + alias; parts = parts[1:]
+    fd = os.open(anchor, flags)
+    try:
+        for part in parts:
+            nxt = os.open(part, flags, dir_fd=fd)
+            os.close(fd); fd = nxt
+        yield fd
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def _regular_file(path, root=None):
+    path = os.path.abspath(path); root = os.path.abspath(root or os.path.dirname(path))
+    if os.path.commonpath((path, root)) != root or path == root:
+        raise ValueError("The file is outside its selected folder.")
+    with _directory(os.path.dirname(path)) as parent:
+        fd = os.open(os.path.basename(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode): raise ValueError("Only regular files can be read.")
+            yield fd
+        finally:
+            os.close(fd)
+
+
+def confined_stat(path, root=None):
+    with _regular_file(path, root) as fd: return os.fstat(fd)
+
+
+def read_note(path, root=None):
+    with _regular_file(path, root) as fd:
+        with os.fdopen(os.dup(fd), "r", encoding="utf-8", errors="replace") as f: return f.read()
+
+
+def file_signature(root, suffix=".md"):
+    """Names and metadata of regular files. No linked entry is opened or inspected through its target."""
+    out = []
+    try:
+        with _directory(root) as fd:
+            for name in sorted(os.listdir(fd)):
+                if not name.endswith(suffix): continue
+                try: st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                except OSError: continue
+                if stat.S_ISREG(st.st_mode): out.append((name, st.st_mtime_ns, st.st_size))
+    except (OSError, ValueError):
+        return ()
+    return tuple(out)
+
+
+def _write_at(parent, name, text, replace=False, expected=None):
+    """Publish a complete regular file atomically under an already checked directory."""
+    if not name or os.path.basename(name) != name or name in (".", ".."):
+        raise ValueError("Invalid file name.")
+    tmp = ".note-" + secrets.token_hex(16)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text); f.flush(); os.fsync(f.fileno())
+        if replace:
+            st = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if not stat.S_ISREG(st.st_mode): raise ValueError("The note is no longer a regular file.")
+            if expected and (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size) != expected:
+                raise ValueError("The note changed while it was being saved.")
+            os.replace(tmp, name, src_dir_fd=parent, dst_dir_fd=parent)
+        else:
+            os.link(tmp, name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
+        os.fsync(parent)
+    finally:
+        try: os.unlink(tmp, dir_fd=parent)
+        except FileNotFoundError: pass
+
+
 def audit_log(action, detail=""):
     """What changed the twin, and when. Read it with: python3 twin.py log"""
     with LOCK:
@@ -164,82 +254,160 @@ VOICE = re.compile(r"\b(voice|reply|replies|prose|copy|word|email|message|greeti
 
 
 def header(raw):
-    m = re.match(r"\A---\n(.*?)\n---\n", raw, re.S)
+    m = re.match(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|$)", raw, re.S)
     return m.group(1) if m else ""
 
 
 def fm(raw, key):
     """One field from the fenced header only. Nothing in the body is ever read as a field."""
     m = re.search(r"^%s:[ \t]*(.*)$" % re.escape(key), header(raw), re.M)
-    return m.group(1).strip() if m else ""
+    if not m: return ""
+    value = m.group(1).strip()
+    if value.startswith('"'):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, str) else ""
+        except (TypeError, ValueError): return ""
+    if len(value) > 1 and value[0] == value[-1] == "'": return value[1:-1].replace("''", "'")
+    return value
 
 
-def save_note(text, area, source, scope="personal", replaces="", uid=""):
+def note_body(raw):
+    m = re.match(r"\A---\r?\n.*?\r?\n---(?:\r?\n|$)", raw, re.S)
+    return raw[m.end():] if m else raw
+
+
+def _scalar(value):
+    value = str(value)
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_ ./-]*", value) and value.lower() not in ("true", "false", "yes", "no", "null", "none"):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _note_name(note_id):
+    if not isinstance(note_id, str) or not re.fullmatch(r"own:[A-Za-z0-9][A-Za-z0-9_.-]{0,210}", note_id):
+        raise ValueError("Invalid note id.")
+    return note_id[4:] + ".md"
+
+
+def _calendar_date(value, fallback):
+    try: return datetime.fromisoformat(str(value)[:10]).date().isoformat()
+    except (TypeError, ValueError): return fallback
+
+
+def save_note(text, area, source, scope="personal", replaces="", uid="", note_id=None, accepted=None):
     """Everything the twin learns is one plain Markdown file in its notes folder: readable, editable, easy to back up.
     With a uid the write is repeatable: a second call for the same proposal returns the first file."""
-    one = lambda v: " ".join(str(v).split())
-    text = one(text); slug = re.sub(r"[^a-z0-9]+", "-", text.lower())[:48].strip("-") or "note"
-    if uid:
-        done = [f for f in glob.glob(os.path.join(NOTES, "*-%s.md" % uid)) if not os.path.islink(f)]
-        if done: return "own:" + os.path.basename(done[0])[:-3]
+    if uid and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", uid): raise ValueError("Invalid note operation id.")
+    text = str(text); source = str(source); replaces = str(replaces)
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if not first: raise ValueError("A note cannot be empty.")
+    slug = re.sub(r"[^a-z0-9]+", "-", first.lower())[:48].strip("-") or "note"
     scope = scope if re.fullmatch(r"personal|brand|project:[\w.-]{1,60}", scope or "") else "personal"
-    body = "---\ndescription: %s\narea: %s\nscope: %s\nsource: %s\naccepted: %s\n%s---\n\n%s\n" % (
-        text, area if area in AREAS else "decisions", scope, one(source)[:80], now(), ("replaces: %s\n" % one(replaces)) if replaces else "", text)
-    for n in range(1, 500):
-        p = os.path.join(NOTES, "%s-%s%s%s.md" % (now()[:10], slug, "" if n == 1 else "-%d" % n, "-" + uid if uid else ""))
-        try:
-            with open(p, "x") as f: f.write(body)       # never writes over a file, never through a link
-            return "own:" + os.path.basename(p)[:-3]
-        except FileExistsError: continue
+    area = area if area in AREAS else "decisions"
+    fields = {"description": first, "area": area, "scope": scope, "source": source, "accepted": accepted or now()}
+    if replaces: fields["replaces"] = replaces
+    if uid: fields["uid"] = uid
+    body = text if text.endswith("\n") else text + "\n"
+    raw = "---\n" + "\n".join(k + ": " + _scalar(v) for k, v in fields.items()) + "\n---\n\n" + body
+    candidates = [os.path.join(NOTES, _note_name(note_id))] if note_id else []
+    if uid and not candidates: candidates = [p for p in own_files() if os.path.basename(p).endswith("-" + uid + ".md")]
+    for path in candidates:
+        try: saved = read_note(path, NOTES)
+        except FileNotFoundError: continue
+        saved_body = note_body(saved)
+        if saved_body.startswith("\n"): saved_body = saved_body[1:]
+        if (saved_body == body and fm(saved, "area") == area and fm(saved, "scope") == scope and
+                fm(saved, "source") == source and fm(saved, "replaces") == replaces and (not accepted or fm(saved, "accepted") == accepted)):
+            return "own:" + os.path.basename(path)[:-3]
+        raise ValueError("That note id already contains different content.")
+    with _directory(NOTES) as parent:
+        for n in range(1, 500):
+            name = _note_name(note_id) if note_id else "%s-%s%s%s.md" % (now()[:10], slug, "" if n == 1 else "-%d" % n, "-" + uid if uid else "")
+            try:
+                _write_at(parent, name, raw)
+                return "own:" + name[:-3]
+            except FileExistsError:
+                if note_id: raise ValueError("That note id is already in use.")
     raise OSError("could not save the note")
 
 
 def set_status(note_id, status, by=""):
     """Marks one of the twin's own notes replaced or active again by editing its header. The body is never touched."""
-    p = os.path.join(NOTES, note_id[4:] + ".md")
-    if not note_id.startswith("own:") or os.path.islink(p) or not os.path.isfile(p) or not inside(p, NOTES): return False
-    with open(p) as f: raw = f.read()
-    hd = header(raw)
-    if not hd: return False
-    rest = raw[len("---\n" + hd + "\n---\n"):]
-    lines = [l for l in hd.split("\n") if not re.match(r"(status|replaced_by):", l)]
-    if status == "replaced": lines += ["status: replaced", "replaced_by: %s" % by]
-    with open(p, "w") as f: f.write("---\n" + "\n".join(lines) + "\n---\n" + rest)
-    return True
+    if status not in ("active", "replaced"): return False
+    try:
+        name = _note_name(note_id); path = os.path.join(NOTES, name)
+        with _regular_file(path, NOTES) as fd:
+            st = os.fstat(fd)
+            with os.fdopen(os.dup(fd), "r", encoding="utf-8", errors="replace") as f: raw = f.read()
+        hd = header(raw)
+        if not hd: return False
+        lines = [line for line in hd.splitlines() if not re.match(r"^(status|replaced_by):", line)]
+        if status == "replaced":
+            _note_name(by)
+            lines += ["status: replaced", "replaced_by: " + _scalar(by)]
+        changed = "---\n" + "\n".join(lines) + "\n---\n" + note_body(raw)
+        with _directory(NOTES) as parent:
+            _write_at(parent, name, changed, replace=True, expected=(st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size))
+        return True
+    except (OSError, ValueError): return False
+
+
+def own_note_revision(note_id):
+    try: raw = read_note(os.path.join(NOTES, _note_name(note_id)), NOTES)
+    except (OSError, ValueError): return ""
+    lines = [line for line in header(raw).splitlines() if not re.match(r"^(status|replaced_by):", line)]
+    return hashlib.sha256(("\n".join(lines) + "\n---\n" + note_body(raw)).encode()).hexdigest()
 
 
 def own_files():
     """The twin's own note files: regular files inside the notes folder. Links are never followed."""
-    return [p for p in sorted(glob.glob(os.path.join(NOTES, "*.md"))) if not os.path.islink(p) and os.path.isfile(p) and inside(p, NOTES)]
+    return [os.path.join(NOTES, name) for name, _, _ in file_signature(NOTES)]
 
 
-def first_date(body, path):
-    ds = [d for d in re.findall(r"20\d\d-\d\d-\d\d", body) if "2025-01-01" <= d <= now()[:10]]
-    m = re.search(r"modified:\s*(20\d\d-\d\d-\d\d)", body)
-    mod = m.group(1) if m else datetime.fromtimestamp(os.path.getmtime(path)).date().isoformat()
+def first_date(body, path, root=None):
+    ds = [d for d in re.findall(r"20\d\d-\d\d-\d\d", body) if "2025-01-01" <= d <= now()[:10] and _calendar_date(d, "")]
+    fallback = datetime.fromtimestamp(confined_stat(path, root).st_mtime).date().isoformat()
+    mod = _calendar_date(fm(body, "modified"), fallback)
     return (min(ds) if ds else mod), mod
+
+
+def _own_record(path, raw):
+    base = os.path.basename(path)
+    if not ALLOW_F.search(base) or EXCL.search(base) or HARD.search(raw): return None
+    body = note_body(raw).strip()
+    desc = fm(raw, "description")
+    if EXCL.search(desc): return None
+    body = "\n".join(line for line in body.splitlines() if not EXCL.search(line))
+    text = next((line.strip("#> *-") for line in body.splitlines() if line.strip()), desc if not note_body(raw).strip() else "")
+    if not text or EXCL.search(text): return None
+    fallback = datetime.fromtimestamp(confined_stat(path, NOTES).st_mtime).date().isoformat()
+    d = _calendar_date(fm(raw, "accepted"), fallback)
+    scope = fm(raw, "scope") or "personal"
+    if not re.fullmatch(r"personal|brand|project:[\w.-]{1,60}", scope): scope = "personal"
+    return {"id": "own:" + base[:-3], "area": fm(raw, "area") if fm(raw, "area") in AREAS else "decisions", "title": redact(text)[:500],
+            "why": ("Replaces: " + fm(raw, "replaces")) if fm(raw, "replaces") else "", "since": d, "mod": d,
+            "src": "your twin · " + redact(fm(raw, "source") or "taught"), "stale": "", "body": redact(body or text)[:6000], "scope": scope}
 
 
 def load_entries():
     out = []
-    for path in sorted(glob.glob(os.path.join(CFG["memory"], "*.md"))):
-        base = os.path.basename(path)
-        if not inside(path, CFG["memory"]): continue
+    for base, _, _ in file_signature(CFG["memory"]):
+        path = os.path.join(CFG["memory"], base)
         if base == "MEMORY.md" or base.lower() == "readme.md" or base.endswith("-index.md") or not ALLOW_F.search(base) or EXCL.search(base):
             continue
         try:
-            with open(path, errors="replace") as f: raw = f.read()
-        except OSError: continue
+            raw = read_note(path, CFG["memory"])
+        except (OSError, ValueError): continue
         if HARD.search(raw):
             continue  # one mention anywhere drops the whole note
-        dm = re.search(r"^description:\s*(.+)$", raw, re.M)
-        desc = (dm.group(1).strip().strip("\"'") if dm else "")
-        body = re.sub(r"\A---.*?\n---\s*", "", raw, flags=re.S).strip()
+        desc = fm(raw, "description")
+        body = note_body(raw).strip()
         if not desc:
             desc = next((l.strip("#> *-") for l in body.splitlines() if l.strip()), "")
         if not desc or EXCL.search(desc):
             continue
-        typ = (re.search(r"^\s+type:\s*(\w+)", raw, re.M) or [None, ""])[1]
+        typ = fm(raw, "type")
         is_fb = typ == "feedback" or base.startswith("feedback")
         head = base + " " + desc
         if is_fb:
@@ -248,20 +416,22 @@ def load_entries():
             if re.search(r"no_paid|protect|push_main|never_send|client_addressed|no_linkedin|consent|delete|publish|deploy|licen", base): area = "limits"
         else:
             why, area = re.search(r"\*\*Why:\*\*\s*(.+)", body), "work"
-        am = re.search(r"^area:\s*(\w+)", raw, re.M)
-        if am and am.group(1).lower() in AREAS: area = am.group(1).lower()
-        since, mod = first_date(raw, path)
+        am = fm(raw, "area").lower()
+        if am in AREAS: area = am
+        try: since, mod = first_date(raw, path, CFG["memory"])
+        except (OSError, ValueError): continue
         stale = ""
         age = (datetime.now() - datetime.fromisoformat(mod)).days
         if area == "work" and age > 14 and re.search(r"unpushed|awaiting|pending|waiting on|not run|to do\b", raw, re.I):
             m = re.search(r"unpushed|awaiting|pending|waiting on|not run|to do\b", raw, re.I)
             stale = 'Says "%s". Last touched %d days ago.' % (m.group(0).lower(), age)
         body = "\n".join(l for l in body.splitlines() if not EXCL.search(l))
-        out.append({"id": base[:-3], "area": area, "title": redact(desc)[:260], "why": redact(why.group(1))[:240].rsplit(' ', 1)[0] if why and not EXCL.search(why.group(1)) else "",
+        source_id = hashlib.sha256(os.path.realpath(CFG["memory"]).encode()).hexdigest()[:16]
+        out.append({"id": "source:" + source_id + ":" + base[:-3], "area": area, "title": redact(desc)[:260], "why": redact(why.group(1))[:240].rsplit(' ', 1)[0] if why and not EXCL.search(why.group(1)) else "",
                     "since": since, "mod": mod, "src": base, "stale": stale, "body": redact(body)[:6000], "scope": fm(raw, "scope") or "personal"})
     try:
-        with open(CFG["rules"]) as f: rules = json.load(f)
-        mod = datetime.fromtimestamp(os.path.getmtime(CFG["rules"])).date().isoformat()
+        rules = json.loads(read_note(CFG["rules"], os.path.dirname(CFG["rules"])))
+        mod = datetime.fromtimestamp(confined_stat(CFG["rules"], os.path.dirname(CFG["rules"])).st_mtime).date().isoformat()
         for r in rules["rules"]:
             ph = r.get("phrases") or []
             desc = {"banned_phrase": "Never write: " + ", ".join(ph[:8]), "banned_pattern": "Never match " + r.get("pattern", ""),
@@ -276,14 +446,10 @@ def load_entries():
     DB.commit()
     for path in own_files():
         try:
-            with open(path, errors="replace") as f: raw = f.read()
-        except OSError: continue
-        text = fm(raw, "description")
-        if not text or EXCL.search(text) or HARD.search(raw) or fm(raw, "status") == "replaced": continue      # the owner's filters apply here too
-        d = fm(raw, "accepted")[:10]; d = d if re.fullmatch(r"20\d\d-\d\d-\d\d", d) else now()[:10]
-        out.append({"id": "own:" + os.path.basename(path)[:-3], "area": fm(raw, "area") if fm(raw, "area") in AREAS else "decisions", "title": text,
-                    "why": ("Replaces: " + fm(raw, "replaces")) if fm(raw, "replaces") else "", "since": d, "mod": d, "src": "your twin · " + (fm(raw, "source") or "taught"),
-                    "stale": "", "body": text, "scope": fm(raw, "scope") or "personal"})
+            raw = read_note(path, NOTES)
+            entry = _own_record(path, raw)
+        except (OSError, ValueError): continue
+        if entry and fm(raw, "status") != "replaced": out.append(entry)
     verd = {r["key"]: r["verdict"] for r in DB.execute("select * from review")}
     keep = []
     for e in out:
@@ -311,9 +477,8 @@ class Index:
     def get(self):
         with LOCK:
             sync_cfg()
-            files = [f for f in glob.glob(os.path.join(CFG["memory"], "*.md")) if os.path.isfile(f)]
-            own = own_files(); mt = lambda fs: max([os.lstat(f).st_mtime for f in fs] or [0])
-            sig = (CFG["memory"], CFG.get("rules"), len(files), mt(files), len(own), mt(own), DB.execute("select count(*) from taught").fetchone()[0],
+            sig = (CFG["memory"], CFG.get("rules"), file_signature(CFG["memory"]), file_signature(NOTES),
+                   DB.execute("select count(*) from taught").fetchone()[0],
                    DB.execute("select count(*), coalesce(max(at), '') from review").fetchone()[:], DB.execute("select count(*), coalesce(max(at), '') from replaced").fetchone()[:])
             if sig != self.sig:
                 self.e = load_entries(); self.df = {}; self.tf = []
@@ -693,19 +858,47 @@ def clients():
 
 def export(dest):
     """Writes what the twin has learned as plain files into a new, empty folder. Active notes and replaced notes are kept apart."""
-    import shutil
     dest = os.path.abspath(os.path.expanduser(dest))
-    if os.path.islink(dest) or (os.path.exists(dest) and (not os.path.isdir(dest) or os.listdir(dest))): raise SystemExit("Give export a new or empty folder.")
-    os.makedirs(os.path.join(dest, "notes")); os.makedirs(os.path.join(dest, "replaced")); n = 0
-    for f in own_files():
-        with open(f, errors="replace") as fh: raw = fh.read()
-        if HARD.search(raw) or EXCL.search(fm(raw, "description")): continue
-        shutil.copyfile(f, os.path.join(dest, "replaced" if fm(raw, "status") == "replaced" else "notes", os.path.basename(f))); n += 1
-    with open(os.path.join(dest, "memory.json"), "x") as f: json.dump([{k: e.get(k, "") for k in ("id", "area", "scope", "title", "why", "since", "src")} for e in IX.get().e], f, indent=1)
-    with open(os.path.join(dest, "log.json"), "x") as f: json.dump([dict(r) for r in DB.execute("select at,action,detail from log order by id")], f, indent=1)
-    if os.path.isfile(CFG["rules"]) and not os.path.islink(CFG["rules"]): shutil.copyfile(CFG["rules"], os.path.join(dest, "twin.rules.json"))
-    with open(os.path.join(dest, "README.txt"), "x") as f: f.write("notes/ holds the active notes the twin learned. replaced/ holds notes a later decision replaced.\nmemory.json lists every active note the twin can read, including ones from your notes folder.\nlog.json is the record of changes. twin.rules.json is the voice rules file in use.\n")
-    return n
+    with locked():
+        sync_cfg()
+        entries = list(IX.get().e)       # finish recovery and legacy migration before copying files
+        active = {e["id"] for e in entries}
+        files = []
+        for path in own_files():
+            try:
+                raw = read_note(path, NOTES)
+                entry = _own_record(path, raw)
+            except (OSError, ValueError): continue
+            if not entry or DENY.search(raw): continue
+            files.append(("notes" if entry["id"] in active else "replaced", os.path.basename(path), raw))
+        payloads = {
+            "memory.json": json.dumps([{k: e.get(k, "") for k in ("id", "area", "scope", "title", "why", "since", "src")} for e in entries], indent=1),
+            "log.json": json.dumps([dict(r) for r in DB.execute("select * from log order by id")], indent=1),
+            "README.txt": ("notes/ contains active learned notes. replaced/ contains retired learned notes.\n"
+                           "The current note filters apply to both folders.\n"
+                           "memory.json contains active indexed summaries and source labels, not imported source files or their full bodies.\n"
+                           "log.json contains the full local change log, including historical details.\n"
+                           "twin.rules.json contains the active checker rules when available.\n"
+                           "This is not a full backup. It excludes settings, chat, priorities, proposals, photos, meshes and voice cache.\n")}
+        try: payloads["twin.rules.json"] = read_note(CFG["rules"], os.path.dirname(CFG["rules"]))
+        except (OSError, ValueError): pass
+        try:
+            with _directory(os.path.dirname(dest)) as parent:
+                try: os.mkdir(os.path.basename(dest), 0o700, dir_fd=parent)
+                except FileExistsError: pass
+                target = os.open(os.path.basename(dest), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                try:
+                    if os.listdir(target): raise ValueError("Export requires an empty folder.")
+                    for folder in ("notes", "replaced"): os.mkdir(folder, 0o700, dir_fd=target)
+                    for folder, name, raw in files:
+                        child = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=target)
+                        try: _write_at(child, name, raw)
+                        finally: os.close(child)
+                    for name, raw in payloads.items(): _write_at(target, name, raw)
+                finally: os.close(target)
+        except (OSError, ValueError) as e:
+            raise SystemExit("Give export a new or empty real folder with no linked path components.") from e
+        return len(files)
 
 
 def propose(text, area, source, scope="personal"):

@@ -8,7 +8,9 @@ A twin of you that runs on your machine. It keeps selected notes as a memory you
 python3 twin/twin.py
 ```
 
-It opens `http://127.0.0.1:4747`. Out of the box it runs the demo: Maya, a made-up person, with made-up notes. Python 3.9 or newer. Nothing to install for this step.
+The twin app requires macOS or Linux with Python 3.9 or newer and POSIX directory-relative file access that refuses links. It does not support native Windows. Linux and WSL were not verified in this release audit. These app requirements do not apply to the legacy voice scripts in `scripts/`.
+
+It opens `http://127.0.0.1:4747`. Out of the box it runs the demo: Maya, a made-up person, with made-up notes. No extra packages or account are needed for the typed demo.
 
 ## Make it yours
 
@@ -130,6 +132,7 @@ The local data folder defaults to `~/.twin`; `TWIN_HOME` can select another one.
 Draft checking and local audio conversion use temporary files. Checking or rewriting a draft does not save that draft in chat. Remote providers may retain submitted content under their own terms. The face detector is stored beside `twin/head/build.py`. Background-removal weights use rembg's model cache outside the local data folder by default. Deleting the local data folder does not remove those models or provider-side objects.
 
 - See recorded changes: `python3 twin/twin.py log`. The log includes proposal decisions, note changes and remote-action attestations. It is a local record, not a verified identity trail or a tamper-proof log. Photo build submission records an attestation; voice cloning records it after a successful response. Ticking a checkbox by itself does not create a log entry.
+- The log can retain text from earlier events after source removal or filter changes. Export includes that retained history in `log.json`, without reapplying the current note filters. Review it before sharing an export.
 - Take a copy: copy the `~/.twin` folder, or run `python3 twin/twin.py export FOLDER` for plain files only.
 - Delete local app data: stop the app and connected MCP processes, then delete the selected local data folder. Your selected source files and exported copies remain. Delete a cloned voice through your ElevenLabs account separately. fal builds and other provider data follow those services' retention/deletion terms; local deletion does not prove remote deletion.
 

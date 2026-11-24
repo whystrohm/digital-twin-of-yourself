@@ -32,6 +32,8 @@ with its reason, token use, and the summary.
 
 ## Run it
 
+Using `--samples` requires Python 3.9 or newer and POSIX directory-relative file reads that refuse links, as available on macOS and Linux. The sample reader refuses to run on native Windows when those features are missing, including during `--dry-run`. Linux and WSL were not verified in this release audit. The legacy scan, report and checker commands do not use this optional bounded-sample reader.
+
 ```bash
 # 1. Estimate only. Sends nothing.
 python3 validation/twin_eval.py --twin twins/<brand>/twin.md --samples <held-out folder> --dry-run

@@ -32,7 +32,7 @@ That is one run on made-up notes. It shows the loop works. It is not a measure o
 
 ## Try it in one minute
 
-You need Python 3.9 or newer. The demo needs no extra packages or account. Cloning contacts GitHub. The typed demo then runs offline with the default settings.
+The twin app requires macOS or Linux with Python 3.9 or newer and POSIX file-access support. It does not support native Windows. Linux and WSL were not verified in this release audit. The demo needs no extra packages or account. Cloning contacts GitHub. The typed demo then runs offline with the default settings.
 
 ```bash
 git clone https://github.com/whystrohm/digital-twin-of-yourself.git
@@ -135,7 +135,7 @@ Built by [WhyStrohm](https://whystrohm.com).
 
 ## Try it in three minutes
 
-You need Python 3.9 or newer. These sample scripts need no extra packages and make no network requests. Cloning the repo contacts GitHub.
+These legacy voice scripts need Python 3.9 or newer, no extra packages and no network requests. They do not use the twin app's POSIX storage layer. Native Windows behavior was not verified in this release audit. The commands below use a shell; opening the report differs by platform. Cloning the repo contacts GitHub.
 
 ```bash
 git clone https://github.com/whystrohm/digital-twin-of-yourself.git

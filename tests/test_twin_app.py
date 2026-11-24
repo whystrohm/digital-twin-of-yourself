@@ -362,6 +362,102 @@ const api=async()=>({ok:true,json:async()=>({terminals:[],entries:[
         self.assertIn("Crates are stacked four high on the dock.", after)
         self.assertNotIn("Crates are stacked three high on the dock.", after)       # only one of the two stays active
 
+    def test_confined_note_fields_round_trip_without_changing_the_body(self):
+        text = 'Inspection cards: use "ivory" stock.\n\nstatus: replaced\nKeep the packing note.\n'
+        source = 'Owner review: "packing"\nSecond reference'
+        nid = twin.save_note(text, "work", source)
+        path = os.path.join(twin.NOTES, nid[4:] + ".md")
+        with open(path) as f: raw = f.read()
+        self.assertEqual(twin.fm(raw, "source"), source)
+        self.assertEqual(raw.split("\n---\n", 1)[1], "\n" + text)
+        self.assertTrue(twin.set_status(nid, "replaced", "own:next-note"))
+        with open(path) as f: changed = f.read()
+        self.assertEqual(changed.split("\n---\n", 1)[1], "\n" + text)
+        self.assertEqual(twin.fm(changed, "status"), "replaced")
+
+    def test_confined_note_body_edits_change_the_recalled_entry(self):
+        nid = twin.save_note("Inspection cards use ivory stock.", "taste", "a test")
+        path = os.path.join(twin.NOTES, nid[4:] + ".md")
+        with open(path) as f: raw = f.read()
+        with open(path, "w") as f: f.write(raw.split("\n---\n", 1)[0] + "\n---\n\nInspection cards use grey stock.\n")
+        twin.IX.sig = None
+        entry = next(e for e in twin.IX.get().e if e["id"] == nid)
+        self.assertEqual(entry["title"], "Inspection cards use grey stock.")
+        self.assertIn("grey stock", entry["body"])
+        self.assertNotIn("ivory stock", entry["body"])
+
+    def test_confined_note_filename_filter_applies_to_learned_notes(self):
+        nid = twin.save_note("Inspection cards stay beside the press.", "work", "a test")
+        keep = twin.ALLOW_F
+        try:
+            twin.ALLOW_F = twin._Rx(r"^feedback-", True); twin.IX.sig = None
+            self.assertNotIn(nid, [e["id"] for e in twin.IX.get().e])
+        finally:
+            twin.ALLOW_F = keep; twin.IX.sig = None
+
+    def test_confined_note_directory_is_checked_again_before_writing(self):
+        with tempfile.TemporaryDirectory() as outside:
+            held = twin.NOTES + ".held"
+            os.rename(twin.NOTES, held)
+            try:
+                os.symlink(outside, twin.NOTES)
+                with self.assertRaises((OSError, ValueError)):
+                    twin.save_note("Inspection cards are checked daily.", "work", "a test")
+                self.assertEqual(os.listdir(outside), [])
+            finally:
+                if os.path.islink(twin.NOTES): os.unlink(twin.NOTES)
+                os.rename(held, twin.NOTES); twin.IX.sig = None
+
+    def test_confined_note_bad_calendar_date_does_not_escape_to_the_page(self):
+        nid = twin.save_note("Inspection cards are numbered.", "work", "a test")
+        path = os.path.join(twin.NOTES, nid[4:] + ".md")
+        with open(path) as f: raw = f.read()
+        import re
+        raw = re.sub(r"^accepted:.*$", "accepted: 2026-02-31", raw, flags=re.M)
+        with open(path, "w") as f: f.write(raw)
+        twin.IX.sig = None
+        entry = next(e for e in twin.IX.get().e if e["id"] == nid)
+        self.assertNotEqual(entry["since"], "2026-02-31")
+        __import__("datetime").date.fromisoformat(entry["since"])
+
+    def test_confined_export_rejects_linked_destination_components(self):
+        with tempfile.TemporaryDirectory() as root:
+            real = os.path.join(root, "real"); os.mkdir(real)
+            link = os.path.join(root, "link"); os.symlink(real, link)
+            with self.assertRaises((OSError, ValueError, SystemExit)):
+                twin.export(os.path.join(link, "copy"))
+            self.assertEqual(os.listdir(real), [])
+
+    def test_confined_export_drops_filtered_notes_from_active_and_replaced(self):
+        nid = twin.save_note("Inspection marker stays private.", "work", "a test")
+        self.assertTrue(twin.set_status(nid, "replaced", "own:later"))
+        keep = twin.DENY
+        try:
+            twin.DENY = twin._Rx("inspection marker", None); twin.IX.sig = None
+            with tempfile.TemporaryDirectory() as dest:
+                twin.export(dest)
+                copied = [name for _, _, names in os.walk(dest) for name in names]
+                self.assertNotIn(nid[4:] + ".md", copied)
+        finally:
+            twin.DENY = keep; twin.IX.sig = None
+
+    def test_confined_platform_without_safe_file_support_stops_before_creating_data(self):
+        with tempfile.TemporaryDirectory() as root:
+            data = os.path.join(root, "new-data")
+            code = "import os,sys;os.supports_dir_fd=set();sys.path.insert(0,sys.argv[1]);import twin"
+            p = subprocess.run([sys.executable, "-B", "-c", code, os.path.join(ROOT, "twin")],
+                               env=dict(os.environ, TWIN_HOME=data), capture_output=True, text=True, timeout=15)
+            self.assertNotEqual(p.returncode, 0)
+            self.assertIn("confined file access", p.stderr)
+            self.assertFalse(os.path.exists(data))
+
+    def test_confined_note_retry_keeps_leading_blank_lines(self):
+        text = "\n\nInspection cards are signed at shift change.\n"
+        first = twin.save_note(text, "work", "a test", uid="inspection-leading-lines")
+        try: second = twin.save_note(text, "work", "a test", uid="inspection-leading-lines")
+        except ValueError: self.fail("A retry must return the existing unchanged note.")
+        self.assertEqual(first, second)
+
     def test_export_writes_plain_files(self):
         d = test_folder(); twin.export(d)
         self.assertTrue(os.path.isfile(os.path.join(d, "memory.json")))
@@ -526,6 +622,25 @@ class PrivacyDocs(unittest.TestCase):
             self.assertNotIn(promise, text)
         self.assertIn("pending", text.lower())
         self.assertIn("profile", text.lower())
+
+    def test_platform_requirements_distinguish_app_and_voice_scripts(self):
+        readme = self.read_doc("README.md")
+        app = readme.split("## Try it in one minute", 1)[1].split("## Make it yours", 1)[0]
+        start = self.read_doc("docs/TWIN.md").split("## Make it yours", 1)[0]
+        for text in (app, start):
+            self.assertIn("macOS", text)
+            self.assertIn("Linux", text)
+            self.assertIn("native Windows", text)
+        self.assertIn("legacy voice scripts", readme.lower())
+        evaluator = self.read_doc("validation/EVAL.md")
+        self.assertIn("POSIX", evaluator)
+        self.assertIn("native Windows", evaluator)
+
+    def test_export_log_discloses_historical_text(self):
+        text = self.read_doc("docs/TWIN.md")
+        self.assertIn("log.json", text)
+        for boundary in ("earlier events", "source removal", "filter changes"):
+            self.assertIn(boundary, text)
 
     def test_public_docs_meet_copy_rules(self):
         import re
