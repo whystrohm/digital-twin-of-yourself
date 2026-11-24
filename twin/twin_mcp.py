@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The twin as an MCP server, so every coding session shares one memory and one set of limits.
 
-Standard library only. Talks JSON-RPC over stdin/stdout. Uses no model and no network.
-It can read the twin's notes and propose a new one. A proposal does nothing until the owner accepts it in the page.
+Uses the standard library and local JSON-RPC over stdin/stdout. The client can send results to its provider.
+It saves pending proposals locally. They enter recall after the owner accepts them in the page.
 
 Turn it on for Claude Code:   claude mcp add twin -- python3 /full/path/to/twin_mcp.py
 Turn it off:                  claude mcp remove twin
@@ -16,15 +16,15 @@ S = lambda **p: {"type": "object", "properties": p, "required": list(p)}
 STR = lambda d: {"type": "string", "description": d}
 TOOLS = {
     "twin_brief": ("What is going on right now in the owner's workspace: open sessions, what shipped, what is not pushed, priorities, stale notes. Counted by code.", S(), lambda a: twin.brief()),
-    "twin_recall": ("Look up what the owner has already decided, likes, or ruled out. Returns their own notes word for word with sources, or says there is not enough evidence. Call this before guessing a preference.",
-                    {"type": "object", "properties": {"question": STR("Plain question, for example: do we use emojis in videos"), "project": STR("Optional. The repo or project name, so notes scoped to it rank first")}, "required": ["question"]}, lambda a: recall(a["question"], a.get("project", ""))),
+    "twin_recall": ("Look up a past decision, preference or limit. Returns matching note summaries with their sources and an evidence rating. Call before guessing a preference.",
+                    {"type": "object", "properties": {"question": STR("A question about the owner's work"), "project": STR("Optional project name. Matching project notes get a ranking boost. Other notes can appear.")}, "required": ["question"]}, lambda a: recall(a["question"], a.get("project", ""))),
     "twin_check_draft": ("Check a draft against the owner's voice rules. Code checks it; same answer every time. Call before showing the owner any copy.", S(text=STR("The draft")), lambda a: draft(a["text"])),
-    "twin_allowed": ("Ask whether an action needs the owner's yes first. Call before pushing, publishing, sending, spending or deleting.", S(action=STR("What you are about to do")), lambda a: twin.allowed(a["action"])),
-    "twin_propose_note": ("Propose something the owner just decided or corrected, so future sessions know it. It is only a proposal: the owner accepts or drops it in the twin page. One short sentence, their decision and the reason.",
+    "twin_allowed": ("Look for a limit before acting. If no rule matches, permission is unknown. Ask the owner when in doubt.", S(action=STR("What you are about to do")), lambda a: twin.allowed(a["action"])),
+    "twin_propose_note": ("Save a pending proposal with the owner's decision and reason. It enters recall only after the owner accepts it in the twin page.",
                           {"type": "object", "properties": {"text": STR("The decision or preference"), "area": {"type": "string", "enum": twin.AREAS}, "scope": STR("personal, brand, or project:<name>. Default personal")}, "required": ["text"]},
                           lambda a: ({"proposed": True, "note": "Waiting for the owner to accept it in the twin page."} if twin.propose(a["text"], a.get("area", "decisions"), CLIENT[0], a.get("scope", "personal")) else {"proposed": False, "note": "Not kept. It is outside this workspace or empty."})),
     "twin_priorities": ("The owner's ordered priority list.", S(), lambda a: [p["text"] for p in twin.priorities() if not p["done"]]),
-    "twin_audit": ("Read-only audit of the owner's listed repos: work not pushed or committed, drafts that fail the voice rules, possible keys in tracked files, old notes. Writes and deletes nothing.", S(), lambda a: twin.audit()),
+    "twin_audit": ("Check listed repos for unpushed work, local changes, draft issues and possible keys. Report old notes. Source files stay unchanged. The twin records client use locally.", S(), lambda a: twin.audit()),
 }
 
 
@@ -62,7 +62,11 @@ for line in sys.stdin:
         if not t: reply(i, error={"code": -32602, "message": "Unknown tool"}); continue
         try:
             twin.sync_cfg()                      # settings may have changed in the page since this session started
-            out = t[2](p.get("arguments") or {}); twin.client_seen(CLIENT[0], p.get("name"), "ok"); reply(i, {"content": [{"type": "text", "text": out if isinstance(out, str) else json.dumps(out, indent=1)}]})
+            out = t[2](p.get("arguments") or {})
+            failed = isinstance(out, dict) and bool(out.get("error"))
+            twin.client_seen(CLIENT[0], p.get("name"), "error" if failed else "ok")
+            reply(i, {"content": [{"type": "text", "text": out if isinstance(out, str) else json.dumps(out, indent=1)}],
+                      "isError": failed})
         except Exception as e:
             try: twin.client_seen(CLIENT[0], p.get("name"), "error")
             except Exception: pass

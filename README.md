@@ -74,9 +74,9 @@ claude mcp add twin -- python3 /full/path/to/twin/twin_mcp.py
 
 | A session asks | The twin answers |
 |---|---|
-| Is this allowed? | Whether the action needs your yes, and the limit behind it |
+| Is this allowed? | A matching limit or a request for your yes. An unmatched request leaves permission unknown. |
 | Check this draft | Pass or fail per rule, with the words that failed |
-| What did we decide? | Your own note, word for word, with its source and scope. Or "not enough evidence" |
+| What did we decide? | Note summaries with their sources, scopes and an evidence rating. |
 | Audit my work | Read only: not pushed, not committed, off voice, possible keys in tracked files |
 
 ## What leaves your machine

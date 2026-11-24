@@ -1201,6 +1201,32 @@ class PrivacyDocs(unittest.TestCase):
         self.assertIn("sends nothing off this machine", text)
         self.assertIn("local HTTP", text)
 
+    def test_mcp_tool_list_describes_recall_scope_and_local_writes(self):
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+        reply = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "twin", "twin_mcp.py")],
+            input=json.dumps(request) + "\n", text=True, capture_output=True,
+            timeout=20, check=True,
+        )
+        tools = {t["name"]: t for t in json.loads(reply.stdout)["result"]["tools"]}
+        with self.subTest(tool="twin_recall"):
+            project = tools["twin_recall"]["inputSchema"]["properties"]["project"]["description"]
+            self.assertIn("ranking boost", project.lower())
+            self.assertIn("summaries", tools["twin_recall"]["description"].lower())
+        with self.subTest(tool="twin_propose_note"):
+            self.assertIn("pending proposal", tools["twin_propose_note"]["description"].lower())
+        with self.subTest(tool="twin_audit"):
+            self.assertIn("client use", tools["twin_audit"]["description"].lower())
+        with self.subTest(tool="twin_allowed"):
+            self.assertIn("unknown", tools["twin_allowed"]["description"].lower())
+
+    def test_readme_explains_what_mcp_recall_and_limits_return(self):
+        text = self.read_doc("README.md")
+        self.assertIn("Note summaries with their sources", text)
+        self.assertIn("An unmatched request leaves permission unknown", text)
+
+
+
 
 
 class DraftLengthBounds(unittest.TestCase):
@@ -1264,6 +1290,22 @@ class DraftLengthBounds(unittest.TestCase):
         model.assert_called_once()
         self.assertNotIn("error", result)
         self.assertEqual(result["text"], "Done.")
+
+
+class McpCheckResultTests(unittest.TestCase):
+    def test_a_checker_error_reaches_the_client_and_its_usage_record(self):
+        import contextlib, sqlite3
+        for size, expected in ((5, "ok"), (60001, "error")):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as store:
+                request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                    "name": "twin_check_draft", "arguments": {"text": "a" * size}}}
+                run = subprocess.run([sys.executable, os.path.join(ROOT, "twin", "twin_mcp.py")],
+                                     input=json.dumps(request) + "\n", text=True, capture_output=True,
+                                     env=dict(os.environ, TWIN_HOME=store), timeout=30, check=True)
+                result = json.loads(run.stdout)["result"]
+                with contextlib.closing(sqlite3.connect(os.path.join(store, "twin.db"))) as db:
+                    recorded = db.execute("select last_result from clients").fetchone()[0]
+                self.assertEqual((result.get("isError", False), recorded), (expected == "error", expected))
 
 
 if __name__ == "__main__":
