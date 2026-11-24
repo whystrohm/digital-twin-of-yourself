@@ -21,7 +21,10 @@ only with `--dry-run`, which sends nothing. No results are published here.
    two answers labelled A and B. Which one is A is decided by a seeded random
    number generator, so the order is random but repeatable (`--seed`).
 4. The judge returns JSON: `winner` (A, B or tie), `confidence`, `reason`.
-   The request uses structured output, so the reply always parses.
+   The request asks for structured output. Refusals, missing results or
+   completion markers, truncated output and malformed judge JSON count as
+   errors, not wins. A run with any of these errors stays incomplete and
+   exits nonzero. This applies to generated answers as well as judge replies.
 5. Code, not a model, maps A and B back to twin and generic, counts wins,
    and runs an exact two-sided sign test (ties dropped).
 6. With `--rules`, code also checks every answer against `twin.rules.json`

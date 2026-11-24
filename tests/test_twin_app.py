@@ -125,6 +125,66 @@ class ValidationSafetyTests(unittest.TestCase):
             self.assertFalse(result["complete"])
             self.assertNotEqual(code, 0)
 
+    @staticmethod
+    def evaluator_message(text, stop="end_turn"):
+        return {"id": "msg_offline_fixture", "type": "message", "role": "assistant", "model": "offline-fixture",
+                "content": [{"type": "text", "text": text}], "stop_reason": stop, "stop_sequence": None,
+                "usage": {"input_tokens": 3, "output_tokens": 2}}
+
+    def evaluator_with_transport(self, messages):
+        import contextlib, io
+        from unittest import mock
+        module, _ = self.load_validation("twin_eval")
+        with tempfile.TemporaryDirectory() as d:
+            profile = os.path.join(d, "profile.md"); out = os.path.join(d, "result.json")
+            with open(profile, "w") as f: f.write("Use short plain sentences.")
+            responses = [io.BytesIO(json.dumps(message).encode()) for message in messages]
+            try:
+                with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "offline-fixture"}), mock.patch.object(module.urllib.request, "urlopen", side_effect=responses):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        code = module.main(["--twin", profile, "--tests", "ST-01", "--out", out])
+                with open(out) as f: result = json.load(f)
+            finally:
+                for response in responses: response.close()
+        return code, result
+
+    def test_truncated_generation_is_not_judged_as_a_complete_answer(self):
+        code, result = self.evaluator_with_transport([
+            self.evaluator_message("A partial generic answer", "max_tokens"),
+            self.evaluator_message("A complete personal answer."),
+            self.evaluator_message('{"winner":"A","confidence":3,"reason":"Shorter."}')])
+        self.assertEqual(code, 1)
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["summary"]["errors"], 1)
+        self.assertEqual(result["summary"]["twin_wins"] + result["summary"]["generic_wins"], 0)
+        self.assertIn("max_tokens", result["tests"][0]["error"])
+
+    def test_truncated_judge_output_does_not_count_even_if_its_json_parses(self):
+        code, result = self.evaluator_with_transport([
+            self.evaluator_message("A complete generic answer."),
+            self.evaluator_message("A complete personal answer."),
+            self.evaluator_message('{"winner":"A","confidence":3,"reason":"Shorter."}', "max_tokens")])
+        self.assertEqual(code, 1)
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["tests"][0]["result"], "error")
+        self.assertEqual(result["tests"][0]["verdicts"][0]["stop"], "max_tokens")
+
+    def test_missing_generation_content_or_stop_reason_is_not_graded(self):
+        missing_text = self.evaluator_message("Unused."); missing_text.pop("content")
+        missing_stop = self.evaluator_message("Looks complete."); missing_stop.pop("stop_reason")
+        for message, expected in [(missing_text, "empty_response"), (missing_stop, "missing_stop_reason")]:
+            with self.subTest(missing=expected):
+                code, result = self.evaluator_with_transport([
+                    message, self.evaluator_message("A complete personal answer."),
+                    self.evaluator_message('{"winner":"A","confidence":3,"reason":"Shorter."}')])
+                self.assertEqual(code, 1)
+                self.assertFalse(result["complete"])
+                self.assertIn(expected, result["tests"][0]["error"])
+
+    def test_evaluation_docs_do_not_guarantee_that_every_judge_reply_parses(self):
+        with open(os.path.join(ROOT, "validation", "EVAL.md")) as f: text = f.read()
+        self.assertNotIn("reply always parses", text)
+
 
 _fixtures = tempfile.TemporaryDirectory(prefix="twin-test-")
 _previous_store = os.environ.get("TWIN_HOME")

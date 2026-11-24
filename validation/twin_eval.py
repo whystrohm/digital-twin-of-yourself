@@ -174,10 +174,13 @@ def call(model, key, prompt, system=None, schema=None, effort="medium", retries=
                 continue
             raise RuntimeError("network error: %s" % exc)
     usage = msg.get("usage", {})
-    if msg.get("stop_reason") == "refusal":
-        return None, usage, "refusal"
+    stop = msg.get("stop_reason")
+    if stop != "end_turn":
+        return None, usage, stop or "missing_stop_reason"
     text = "".join(b.get("text", "") for b in msg.get("content", []) if b.get("type") == "text").strip()
-    return text, usage, msg.get("stop_reason")
+    if not text:
+        return None, usage, "empty_response"
+    return text, usage, stop
 
 
 def sign_test(wins, losses):
