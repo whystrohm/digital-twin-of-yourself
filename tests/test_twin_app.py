@@ -969,6 +969,41 @@ assert new['title'] == 'Crates in the second source are green.'
         except ValueError: self.fail("A retry must return the existing unchanged note.")
         self.assertEqual(first, second)
 
+    def test_confined_export_write_failure_leaves_a_retryable_destination(self):
+        from unittest.mock import patch
+        for existing in (False, True):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as root:
+                dest = os.path.join(root, "copy")
+                if existing: os.mkdir(dest)
+                original = twin._write_at
+                def fail_after_one_write(*args, **kwargs):
+                    original(*args, **kwargs)
+                    raise OSError(28, "simulated export write failure")
+                with patch.object(twin, "_write_at", fail_after_one_write):
+                    with self.assertRaises(SystemExit) as error: twin.export(dest)
+                if existing: self.assertEqual(os.listdir(dest), [])
+                else: self.assertFalse(os.path.exists(dest))
+                self.assertEqual(sorted(os.listdir(root)), ["copy"] if existing else [])
+                self.assertIn("simulated export write failure", str(error.exception))
+                twin.export(dest)
+                self.assertTrue(os.path.isfile(os.path.join(dest, "memory.json")))
+
+    def test_confined_export_rechecks_the_destination_before_publishing(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as root:
+            dest = os.path.join(root, "copy"); os.mkdir(dest)
+            original = twin._write_at; changed = []
+            def owner_adds_a_file(*args, **kwargs):
+                original(*args, **kwargs)
+                if not changed:
+                    with open(os.path.join(dest, "owner.txt"), "w") as f: f.write("keep this file")
+                    changed.append(True)
+            with patch.object(twin, "_write_at", owner_adds_a_file):
+                with self.assertRaises(SystemExit): twin.export(dest)
+            self.assertEqual(os.listdir(dest), ["owner.txt"])
+            with open(os.path.join(dest, "owner.txt")) as f: self.assertEqual(f.read(), "keep this file")
+            self.assertEqual(os.listdir(root), ["copy"])
+
     def test_export_writes_plain_files(self):
         d = test_folder(); twin.export(d)
         self.assertTrue(os.path.isfile(os.path.join(d, "memory.json")))

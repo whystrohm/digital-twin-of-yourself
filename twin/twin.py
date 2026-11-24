@@ -1195,6 +1195,33 @@ def clients():
     return out
 
 
+def _export_target(parent, name):
+    """Return an empty real directory's identity, or None when the chosen destination is absent."""
+    try: st = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    except FileNotFoundError: return None
+    if not stat.S_ISDIR(st.st_mode): raise ValueError("Export requires a real directory.")
+    fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    try:
+        actual = os.fstat(fd)
+        if (actual.st_dev, actual.st_ino) != (st.st_dev, st.st_ino) or os.listdir(fd):
+            raise ValueError("Export requires an unchanged empty directory.")
+        return actual.st_dev, actual.st_ino
+    finally: os.close(fd)
+
+
+def _clear_export_stage(fd):
+    """Remove only entries inside an already opened private staging directory."""
+    for name in os.listdir(fd):
+        st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        if stat.S_ISDIR(st.st_mode):
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            try: _clear_export_stage(child)
+            finally: os.close(child)
+            os.rmdir(name, dir_fd=fd)
+        else:
+            os.unlink(name, dir_fd=fd)
+
+
 def export(dest):
     """Writes what the twin has learned as plain files into a new, empty folder. Active notes and replaced notes are kept apart."""
     dest = os.path.abspath(os.path.expanduser(dest))
@@ -1223,20 +1250,44 @@ def export(dest):
         except (OSError, ValueError): pass
         try:
             with _directory(os.path.dirname(dest)) as parent:
-                try: os.mkdir(os.path.basename(dest), 0o700, dir_fd=parent)
-                except FileExistsError: pass
-                target = os.open(os.path.basename(dest), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                name = os.path.basename(dest)
+                before = _export_target(parent, name)
+                stage_name = ".twin-export-" + secrets.token_hex(16)
+                os.mkdir(stage_name, 0o700, dir_fd=parent)
+                try: stage = os.open(stage_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                except OSError:
+                    os.rmdir(stage_name, dir_fd=parent)
+                    raise
+                published = False; failure = None; cleanup_error = None
                 try:
-                    if os.listdir(target): raise ValueError("Export requires an empty folder.")
-                    for folder in ("notes", "replaced"): os.mkdir(folder, 0o700, dir_fd=target)
-                    for folder, name, raw in files:
-                        child = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=target)
-                        try: _write_at(child, name, raw)
+                    for folder in ("notes", "replaced"): os.mkdir(folder, 0o700, dir_fd=stage)
+                    for folder, filename, raw in files:
+                        child = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=stage)
+                        try: _write_at(child, filename, raw)
                         finally: os.close(child)
-                    for name, raw in payloads.items(): _write_at(target, name, raw)
-                finally: os.close(target)
+                    for filename, raw in payloads.items(): _write_at(stage, filename, raw)
+                    os.fsync(stage)
+                    name = os.path.basename(dest)
+                    if _export_target(parent, name) != before:
+                        raise ValueError("The export destination changed while the copy was being prepared.")
+                    os.replace(stage_name, name, src_dir_fd=parent, dst_dir_fd=parent)
+                    published = True
+                    os.fsync(parent)
+                except (OSError, ValueError) as e:
+                    failure = e
+                finally:
+                    if not published:
+                        try:
+                            _clear_export_stage(stage)
+                            os.rmdir(stage_name, dir_fd=parent)
+                        except OSError as e: cleanup_error = e
+                    os.close(stage)
+                if failure:
+                    state = "A complete export was published, but its durable save could not be confirmed." if published else "No export was published; the chosen destination was not changed."
+                    if cleanup_error: state += " Staging cleanup also failed: " + str(cleanup_error)
+                    raise SystemExit("Export failed: %s. %s" % (failure, state)) from failure
         except (OSError, ValueError) as e:
-            raise SystemExit("Give export a new or empty real folder with no linked path components.") from e
+            raise SystemExit("Export failed: %s. Choose a new or empty real folder with no linked path components." % e) from e
         return len(files)
 
 
