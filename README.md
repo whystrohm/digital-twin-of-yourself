@@ -6,6 +6,8 @@ Your decisions, voice rules and limits, available to your coding sessions. It ru
 
 Built for people who already work with coding agents and are tired of correcting the same thing twice.
 
+**New in 4.0:** the twin app, a head built from your photo, a voice, and an MCP server for your coding sessions. [See it on whystrohm.com/twin](https://whystrohm.com/twin?utm_source=github&utm_medium=repo&utm_campaign=twin-4) · [How it works](docs/TWIN.md) · [Changelog](CHANGELOG.md)
+
 ![A digital twin that knows your work. Three inputs go in: your photo becomes the head, your repos are read, your notes fill it. Then it answers "what shipped this week?" and stops at "email the supplier" with "That one needs your yes"](assets/twin-cover.webp)
 
 *A made-up person: a generated face and made-up notes. The repo counts and the answer about what shipped are examples.*
