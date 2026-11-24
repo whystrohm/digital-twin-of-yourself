@@ -4,18 +4,18 @@
 
 ### Added: the twin (4.0.0)
 - `twin/twin.py`: a local page and server. A head made of dots where every dot belongs to one note, with its reason, source and date. Ask it, check and rewrite drafts, an ordered priority list, what shipped, a read-only audit, a timeline, and "teach it". Standard library only. Listens on `127.0.0.1` only.
-- `twin/twin_mcp.py`: the twin as an MCP server. Seven tools so a coding session can recall a decision, check a draft, ask whether an action needs a yes, and propose a note. A proposal does nothing until it is accepted in the page.
+- `twin/twin_mcp.py`: the twin as an MCP server. Seven tools so a coding session can recall a decision, check a draft, ask whether an action needs a yes, and propose a note. A pending proposal is saved locally but does not enter recall before owner review. Client-use records are also saved.
 - Setup in the page: a photo check that runs before any paid step, a 3D head built from one photo (`twin/head/build.py`, needs a fal key and extra packages), a voice picked from an ElevenLabs account, a notes folder and a list of repos.
 - Ingest: when notes are read in, the head starts empty and fills note by note while a counter climbs. It plays on first run and after Setup saves a notes folder.
 - Voice cloning in Setup: record 30 to 60 seconds, tick the consent box, and the voice is made on your own ElevenLabs account.
 - A free system voice (macOS `say`, or `espeak-ng`), so the twin can speak with no account and no text leaving the machine.
-- Learn from my repos: reads the instruction files in the repos you listed and proposes their rules as notes. Setup shows exactly what will be read first.
-- After an outside review: the session list is off by default, symlinks cannot lead out of a listed folder, git runs with hooks off, the limits tool never clears an action that matches a limit note, a consent tick is required for photos and voices and is logged, and `python3 twin/twin.py log` shows what changed the twin.
-- Learned notes are plain Markdown files in `~/.twin/notes/`. A new note can replace an old one; the old one is kept and can be restored. Notes carry a scope. `twin.py export` writes everything as files.
+- Learn from my repos: reads instruction files in listed repos and proposes rules as notes. Setup shows saved sources; saving a new notes folder loads it. Draft rules and the model voice profile are separate files selected in Setup.
+- After an outside review: session discovery is off by default, Git calls disable hooks and file monitors, and the limits tool labels its result as advice. Submitted photo builds and successful voice clones record self-attestation, not verified identity. `python3 twin/twin.py log` shows recorded changes. The read scope and optional provider inputs are documented in `docs/TWIN.md`.
+- Learned notes are plain Markdown files in `~/.twin/notes/`. A new note can replace an old one; the old one is kept and can be restored. Scope affects retrieval ranking, not access control. `twin.py export` writes learned files, active note summaries, rules and the log. It is not a full backup of imported sources, chat, settings, profile or media.
 - The page shows which client last asked the twin. `validation/twin_loop.py` runs the learning loop with fresh sessions, and `validation/LOOP_RESULTS.md` holds one real run.
 - A demo twin that runs with no setup: a generated face and made-up notes in `examples/twin-notes/`.
 - `docs/TWIN.md`: how to run it, connect it, what leaves the machine for each setting, and its limits today.
-- `tests/test_twin_app.py`: ten offline tests on the sample.
+- `tests/test_twin_app.py`: offline sample and release-regression checks.
 
 ### Changed
 - README opens with the twin. The measuring and checking tools from 3.0 follow under "The voice tools" and work as before.

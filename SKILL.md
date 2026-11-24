@@ -29,9 +29,9 @@ Three depth levels depending on available data:
 
 ## The twin app
 
-This repo also ships a twin you can see and ask. If the user has the repo cloned and asks to run, open or set up their twin, tell them to run `python3 twin/twin.py` from the repo folder. It opens a local page: a head built from one photo, where every dot belongs to one of their notes. It answers from those notes, checks drafts with the rules this skill writes, and stops at their limits. Setup, the MCP server for coding sessions, and what leaves the machine are in `docs/TWIN.md`.
+This repo also ships a twin you can see and ask. If the user has the repo cloned and asks to run, open or set up their twin, tell them to run `python3 twin/twin.py` from the repo folder. It opens a local page with a demo head and sample notes. A photo can replace the head through an optional paid build. It answers from selected notes, checks drafts with a rules file and advises on recognized limits. It cannot stop other tools from acting. Setup, the MCP server for coding sessions, and what leaves the machine are in `docs/TWIN.md`.
 
-The `twin.rules.json` and `twin.md` this skill produces are what the twin app uses for its voice check. Point the app at them by setting `rules` and `persona` in `~/.twin/config.json`.
+The checker uses `twin.rules.json`. Claude answers and rewrites also use the `twin.md` voice profile. Select both files in Setup under Notes, or set `rules` and `persona` in `~/.twin/config.json`. The bundled examples stay active until changed. Notes and Teach do not change either file.
 
 ## Consent
 
@@ -61,6 +61,8 @@ ELSE:
 ## Layer 3: Measured File Scan (Claude Code / Cowork)
 
 ### What to scan (in priority order)
+Use only material the user has permission to use. Company writing needs approval for this purpose. Remove other people's words and identifying or confidential details before either the scripts or a model reads it. Another author's writing needs that person's written consent.
+
 1. **The user's own sent emails or messages**, scrubbed of other people's names and details: highest signal for natural voice
 2. **Proposals and pitch docs**: decision logic and framing patterns
 3. **CLAUDE.md / README files**: how they brief others

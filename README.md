@@ -2,7 +2,7 @@
 
 **A digital twin that knows your work.**
 
-Your approved decisions, voice rules and limits, available to your coding sessions. It runs on your machine. You can see it, ask it and correct it, and nothing becomes part of it until you accept it.
+Your decisions, voice rules and limits, available to your coding sessions. It runs on your machine. Selected notes load when you save their folder. Sessions can propose new notes, and you review those before they enter recall.
 
 Built for people who already work with coding agents and are tired of correcting the same thing twice.
 
@@ -21,18 +21,18 @@ Built for people who already work with coding agents and are tired of correcting
 | Your corrections do not carry. You fix it in one session and fix it again in the next tool. | Keeps each decision as a plain file with its source and date. Any session that speaks MCP can ask for it. |
 | Instruction files drift. Nobody knows which rule is current or where it came from. | A new decision can replace an old one. The old one is kept, marked replaced, and can be restored. |
 | AI drafts do not sound like you. | Checks any draft against your rules, by code, and names each line that fails. |
-| Agents act without asking. | Pushing, publishing, sending, spending and deleting come back as "needs your yes". |
+| Agents act without asking. | Reports matching limits and asks for your yes on restricted actions it recognizes. It gives advice. It cannot stop another tool from acting. |
 | You run more sessions than you can watch. | Shows what shipped and what is next, and your open sessions if you turn that on. |
 
 ## Does it work
 
-One real run of the learning loop, with fresh sessions each time: a session does not know something, you correct it once, the next fresh session uses the note and names its source, you change the decision, and the next session uses the new one only. All 7 checked steps came out as expected, including a check of what the twin holds at the end. The full transcript is in [validation/LOOP_RESULTS.md](validation/LOOP_RESULTS.md), and `python3 validation/twin_loop.py` runs it again on your own Claude account.
+One saved sample run of the learning loop, with fresh sessions each time: a session does not know something, you correct it, the next session uses the note, you change the decision, and the following session gives the updated answer. The transcript and recorded checks are in [validation/LOOP_RESULTS.md](validation/LOOP_RESULTS.md). `python3 validation/twin_loop.py` runs the sample again through your own Claude account and can incur usage charges.
 
 That is one run on made-up notes. It shows the loop works. It is not a measure of how much time it saves you.
 
 ## Try it in one minute
 
-You need Python 3.9 or newer. Nothing to install. Nothing leaves your machine.
+You need Python 3.9 or newer. The demo needs no extra packages or account. Cloning contacts GitHub. The typed demo then runs offline with the default settings.
 
 ```bash
 git clone https://github.com/whystrohm/digital-twin-of-yourself.git
@@ -58,7 +58,7 @@ Click **Setup**. Three steps, each optional.
 |---|---|---|
 | **Face** | Drop one photo. It checks the photo and says what to fix, then builds a 3D head you can turn all the way round. | A fal key and a few Python packages. One paid build on your own account. |
 | **Voice** | Pick the free system voice, an ElevenLabs voice, or record a minute and clone your own. | Nothing for the system voice. An ElevenLabs key for the rest. |
-| **Notes** | Point it at a folder of notes and the repos it may read. It lists what it will read first, reads only that, and proposes rules it finds in your repos for you to approve. | Nothing. A Claude Code memory folder works as it is. |
+| **Notes** | Choose the notes folder and repos it may read. Saving loads those sources. Repo rules become proposals for you to review. Choose your rules file and voice profile here too; both start as labeled examples. | A folder of Markdown notes. A Claude Code memory folder works. Use only material you have permission to use. |
 
 ![Setup: one photo in, the head it becomes, and the photo check result](assets/twin-setup.png)
 
@@ -66,7 +66,7 @@ Full instructions: [docs/TWIN.md](docs/TWIN.md).
 
 ## Connect your coding sessions
 
-The twin is also an MCP server. Any tool that speaks MCP can ask it before it guesses, and propose a note when you correct it. A session can only propose. You accept or drop each one in the page.
+The twin is also an MCP server. Any tool that speaks MCP can ask it before it guesses, and propose a note when you correct it. A session cannot accept its own proposal. You accept or drop each one in the page. Pending proposals and client-use records are saved locally before that review. Returned notes and work summaries enter the calling client, whose model and provider settings apply.
 
 ```bash
 claude mcp add twin -- python3 /full/path/to/twin/twin_mcp.py
@@ -81,18 +81,24 @@ claude mcp add twin -- python3 /full/path/to/twin/twin_mcp.py
 
 ## What leaves your machine
 
-The default is nothing. The page always shows the current line in its top right corner.
+The default typed demo makes no network requests after you obtain the repo. The page labels answer and speech modes. Read the action's disclosure before enabling a remote feature. Connecting an MCP client also shares results with that client.
 
 | You turn on | What leaves | Where |
 |---|---|---|
 | Nothing (the default) | Nothing | Nowhere |
-| Answers by Claude | Your question, your display name, the notes that match, your priorities, your repo and shipped lists, and your voice profile | Claude, through your own CLI |
-| Rewrite it as me | The draft, your voice rules and your voice profile. This runs even when answers are set to notes only | Claude, through your own CLI |
-| An ElevenLabs voice | The text of each reply. The system voice sends nothing | ElevenLabs, through your own key |
-| Cloning a voice | The recording you made, once | ElevenLabs, through your own key |
-| The head build | Your cut-out photo, once | fal, through your own key |
+| Answers by Claude | Your question, display name, matched notes with sources and excerpts, priorities, repo and shipped lists, and voice profile | Claude, through your own CLI |
+| Rewrite it as me | The draft, rules and voice profile. A retry adds failed-rule feedback. This runs even when answers are set to notes only | Claude, through your own CLI |
+| Connected MCP client | Requested note text, sources, rule results or work summaries | The calling client over local stdio. Its provider policy applies |
+| An ElevenLabs voice | Reply or preview text on a cache miss. The system voice sends nothing | ElevenLabs, through your own key |
+| Voice list | An authenticated request for your account's available voices | ElevenLabs, through your own key |
+| Cloning a voice | The recording, chosen name and description, per submitted request | ElevenLabs, through your own key |
+| The head build | Your cut-out photo per build. CLI side views add their cut-outs | fal, through your own key |
+| Photo check | A face-detector download when missing. The photo is checked locally | GitHub's OpenCV Zoo |
+| Photo build model download | A request for missing background-removal weights | The model host used by rembg |
 
-Use your own face, voice and notes, or ones you have written consent for. A twin of a person is theirs. Do not use one to monitor or score anyone.
+Session discovery is off by default. If enabled, it reads Claude Code session metadata and transcript tails, including titles, last prompts, working folders, status and timing. This covers your local Claude Code session folders, not just the repos you selected. It does not add those sessions to the Think payload. See [the full read and storage guide](docs/TWIN.md).
+
+Use your own face and voice, or ones you have written consent for. Use writing you have permission to use. Company material needs approval for this purpose and must be scrubbed of client, coworker and confidential details. Setup records self-attestation for submitted photo builds and successful voice clones. It cannot verify identity or written permission. A twin of a person is theirs. Do not use one to monitor or score anyone.
 
 ## Pairs with Shotkit
 
@@ -119,7 +125,7 @@ Use your own face, voice and notes, or ones you have written consent for. A twin
 
 ![The report: your score, the phrases you repeat, where your voice drifts, and flagged lines with a fix](assets/report.png)
 
-The AI does the judgment calls. Everything that can be counted or checked is done by code: it runs on your machine and gives the same answer every time. The scan and the report strip emails, phone numbers and money amounts from what they save. The checker and the twin work on your text as you wrote it.
+The AI does the judgment calls. Everything that can be counted or checked is done by code: it runs on your machine and gives the same answer every time. The scan and the report strip emails, phone numbers and money amounts from what they save. The checker examines raw drafts. App chat, priorities and voice profiles can retain personal text.
 
 ![How it works: measure, extract, enforce, improve](assets/how-it-works.png)
 
@@ -129,7 +135,7 @@ Built by [WhyStrohm](https://whystrohm.com).
 
 ## Try it in three minutes
 
-You need Python 3.9 or newer. Nothing to install. Nothing leaves your machine.
+You need Python 3.9 or newer. These sample scripts need no extra packages and make no network requests. Cloning the repo contacts GitHub.
 
 ```bash
 git clone https://github.com/whystrohm/digital-twin-of-yourself.git
@@ -183,7 +189,7 @@ Upload `digital-twin-skill.zip` to Claude.ai (Settings > Skills), or copy `SKILL
 
 ## What the code does
 
-All of `scripts/` is standard-library Python. No dependencies, no network calls. Emails, phone numbers and money amounts are redacted when a file is read, before anything is counted or written.
+The voice scripts in `scripts/` use standard-library Python and make no network calls. The scanner removes emails, phone numbers and money amounts before measuring its corpus. The report scrubs displayed data again. The checker examines raw drafts and redacts reported matches and excerpts. This does not scrub app chat, priorities or voice profiles.
 
 | Script | Input | Output |
 |---|---|---|
@@ -245,9 +251,9 @@ Run the tests for the scripts with `scripts/test.sh`. CI runs the same script.
 
 ## Safety
 
-The prompts do not collect data, call APIs or run code. The scripts run offline and redact before they write. The risk is in what you feed them.
+Prompt files do not execute on their own. Pasting them and your writing into a hosted chat shares that material with the host. The voice scripts run locally; their scan/report outputs and checker excerpts use the redaction described above. Optional app features and validation commands have separate outbound inputs.
 
-1. Only use YOUR writing. Never client data or coworker messages.
+1. Use your own writing that you have permission to use. Company material needs approval for this purpose. Remove other people's words and identifying or confidential details first.
 2. A Twin of another person needs that person's written consent. The same goes for cloning anyone's voice for audio.
 3. Scrub names and identifying details before you scan. Redaction catches emails, phone numbers and money amounts, not names.
 4. The prompt extracts principles, not data. No names belong in the output.

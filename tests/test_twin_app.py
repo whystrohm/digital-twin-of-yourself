@@ -26,6 +26,50 @@ sys.argv = _argv
 
 
 class TwinApp(unittest.TestCase):
+    @unittest.skipUnless(
+        os.path.isfile(os.path.join(os.environ.get("TWIN_SITE_TEST_ROOT", os.path.join(os.path.dirname(ROOT), "whystrohm-twin")), "src", "app", "twin", "page.tsx")),
+        "Set TWIN_SITE_TEST_ROOT to a site checkout to check the public Twin page.",
+    )
+    def test_site_twin_disclosures_and_route_contract(self):
+        import re
+
+        site = os.environ.get("TWIN_SITE_TEST_ROOT", os.path.join(os.path.dirname(ROOT), "whystrohm-twin"))
+        sources = {}
+        for name in ("src/app/twin/page.tsx", "src/lib/nav.ts", "src/app/sitemap.ts", "scripts/write-route-lastmod.mjs"):
+            with open(os.path.join(site, name), encoding="utf-8") as f:
+                sources[name] = f.read()
+        page = sources["src/app/twin/page.tsx"]
+        for promise in ("Nothing becomes part of it until you accept it", "Before it reads anything", "no code that writes to, moves or deletes your files", "at all times"):
+            with self.subTest(promise=promise):
+                self.assertNotIn(promise, page)
+        rows = {
+            setting.lower(): (what + " " + where).lower()
+            for setting, what, where in re.findall(r'\{ setting: "([^"]+)", what: "([^"]+)", where: "([^"]+)" \}', page)
+        }
+        for topic, fields in (
+            ("answers by claude", ("name", "notes", "priorities", "repo", "shipped", "profile")),
+            ("rewrite", ("draft", "rules", "profile", "notes-only")),
+            ("elevenlabs voice", ("reply", "preview", "voice id")),
+            ("voice list", ("key", "elevenlabs")),
+            ("cloning", ("recording", "name", "description", "request")),
+            ("building", ("photo", "poll", "mesh")),
+            ("model downloads", ("github", "weights", "cache")),
+            ("coding sessions", ("notes", "sources", "work", "client")),
+        ):
+            with self.subTest(disclosure=topic):
+                matching = [value for key, value in rows.items() if topic in key]
+                self.assertEqual(len(matching), 1)
+                for field in fields:
+                    self.assertIn(field, matching[0])
+        for explanation in ("transcript", "self-attestation", "source files", "imported notes", "summary", "model cache"):
+            with self.subTest(explanation=explanation):
+                self.assertIn(explanation, page.lower())
+        self.assertRegex(page, r"<LazyFilm\b[\s\S]*?\bcontrols\b[\s\S]*?/>")
+        self.assertRegex(page, r'<main\b[^>]*\bid="main"[^>]*\bdata-nx=')
+        self.assertRegex(sources["src/lib/nav.ts"], r'href:\s*"/twin"')
+        self.assertRegex(sources["src/app/sitemap.ts"], r'path:\s*"/twin"')
+        self.assertRegex(sources["scripts/write-route-lastmod.mjs"], r'"/twin":\s*"src/app/twin/page\.tsx"')
+
     def test_sample_notes_load_into_every_area(self):
         e = twin.IX.get().e
         self.assertGreaterEqual(len(e), 15)
@@ -313,6 +357,72 @@ const api=async()=>({ok:true,json:async()=>({terminals:[],entries:[
         self.assertEqual(len(json.loads(out[1])["result"]["tools"]), 7)
         self.assertTrue(json.loads(json.loads(out[2])["result"]["content"][0]["text"])["needs_owner_yes"])
 
+
+class PrivacyDocs(unittest.TestCase):
+    def read_doc(self, name):
+        with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+            return f.read()
+
+    def test_public_data_tables_name_optional_transfers(self):
+        for name in ("README.md", "docs/TWIN.md"):
+            with self.subTest(document=name):
+                text = self.read_doc(name)
+                section = text.split("## What leaves your machine", 1)[1].split("\n## ", 1)[0]
+                for transfer in ("Connected MCP client", "Voice list", "Photo check", "Photo build model download"):
+                    self.assertIn("| " + transfer + " |", section)
+                self.assertIn("display name", section)
+                self.assertIn("notes only", section)
+
+    def test_session_and_read_inventory_names_the_actual_inputs(self):
+        text = self.read_doc("docs/TWIN.md").lower()
+        for item in ("session metadata", "transcript", "last prompt", "working folder", "rules file", "voice profile", "learned notes"):
+            with self.subTest(input=item):
+                self.assertIn(item, text)
+
+    def test_storage_and_token_claims_are_scoped(self):
+        text = self.read_doc("docs/TWIN.md")
+        for promise in ("Questions and drafts you type are stored there as typed.",
+                        "refuses requests without its session token.",
+                        "It has no code that writes to, moves or deletes your files."):
+            self.assertNotIn(promise, text)
+        self.assertIn("temporary", text.lower())
+        self.assertIn("API requests", text)
+        self.assertIn("model cache", text.lower())
+
+    def test_profile_setup_and_input_permission_are_explicit(self):
+        text = self.read_doc("docs/TWIN.md")
+        self.assertIn("twin.rules.json", text)
+        self.assertIn("twin.md", text)
+        for name in ("README.md", "docs/TWIN.md", "SKILL.md"):
+            with self.subTest(document=name):
+                self.assertIn("permission to use", self.read_doc(name).lower())
+
+    def test_proof_does_not_claim_exclusive_retrieval(self):
+        text = self.read_doc("README.md")
+        self.assertNotIn("uses the new one only", text)
+        self.assertIn("sample run", text.lower())
+
+    def test_safety_checklist_scopes_redaction_and_validation(self):
+        text = self.read_doc("SAFETY_CHECKLIST.md")
+        self.assertNotIn("before anything is counted or written", text)
+        self.assertNotIn("is the one networked file", text)
+        self.assertNotIn("SAFE to share publicly", text)
+        self.assertIn("checker examines raw", text.lower())
+        self.assertIn("validation/twin_loop.py", text)
+
+    def test_current_changelog_does_not_overstate_data_contracts(self):
+        text = self.read_doc("CHANGELOG.md").split("## [3.0.1]", 1)[0]
+        for promise in ("writes everything", "ten offline tests", "A proposal does nothing"):
+            self.assertNotIn(promise, text)
+        self.assertIn("pending", text.lower())
+        self.assertIn("profile", text.lower())
+
+    def test_public_docs_meet_copy_rules(self):
+        import re
+        banned = re.compile(r"\b(?:delve|transformative|robust|game-changing|revolutionize|unlock|elevate|seamless|leverage|automat\w*)\b|\u2014|[\U0001F300-\U0001FAFF]", re.I)
+        for name in ("README.md", "docs/TWIN.md", "SKILL.md", "SAFETY_CHECKLIST.md", "CHANGELOG.md"):
+            with self.subTest(document=name):
+                self.assertIsNone(banned.search(self.read_doc(name)))
 
 if __name__ == "__main__":
     unittest.main()
