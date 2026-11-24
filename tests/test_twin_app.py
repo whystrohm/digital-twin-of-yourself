@@ -55,6 +55,32 @@ class TwinApp(unittest.TestCase):
     def test_audit_reads_nothing_when_no_repo_is_listed(self):
         self.assertEqual(twin.audit()["read"], [])
 
+    def test_a_matching_limit_is_never_cleared(self):
+        r = twin.allowed("change the price on order 12")
+        self.assertTrue(r["needs_owner_yes"])
+        self.assertTrue(r["matching_limits"])
+
+    def test_sessions_are_off_until_turned_on(self):
+        self.assertFalse(twin.state()["sessions_on"])
+        self.assertEqual(twin.terminals(), ([], 0))
+
+    def test_a_symlink_cannot_lead_out_of_the_notes_folder(self):
+        d = tempfile.mkdtemp(); out = tempfile.mkdtemp(); secret = os.path.join(out, "secret.md")
+        with open(secret, "w") as f: f.write("---\ndescription: The vault code is nine nine nine\narea: limits\n---\n")
+        os.symlink(secret, os.path.join(d, "linked.md"))
+        with open(os.path.join(d, "real.md"), "w") as f: f.write("---\ndescription: A real note about packing\narea: work\n---\n")
+        keep = twin.CFG["memory"]; twin.CFG["memory"] = d; twin.IX.sig = None
+        try: titles = [e["title"] for e in twin.IX.get().e]
+        finally: twin.CFG["memory"] = keep; twin.IX.sig = None
+        self.assertIn("A real note about packing", titles)
+        self.assertFalse(any("vault" in x for x in titles))
+        self.assertFalse(twin.inside(os.path.join(d, "linked.md"), d))
+
+    def test_changes_are_logged(self):
+        pid = twin.propose("Pallets are wrapped twice.", "decisions", "a test"); twin.settle(pid, True)
+        rows = [r["action"] for r in twin.DB.execute("select action from log")]
+        self.assertIn("proposal accepted", rows)
+
     def test_mcp_server_lists_its_tools(self):
         msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
                 {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "twin_allowed", "arguments": {"action": "send the supplier email"}}}]

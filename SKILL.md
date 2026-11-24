@@ -261,7 +261,7 @@ on-voice before calibrating against them.
 Respond to this scenario AS THE USER:
 
 > "A high-value client just offered you $50,000 for a project that's
-> pure manual labor: no systems, no templates, no automation. It's
+> pure manual labor: no systems, no templates, nothing set up to repeat. It's
 > prestigious but breaks every rule in your Decision Logic. What do
 > you say to the client?"
 

@@ -19,7 +19,7 @@ A twin of you that runs on your machine. It remembers how you decide, what you l
 | AI forgets you. Every session starts cold. | Keeps your decisions, taste, voice and limits as notes with a source and a date. |
 | AI drafts do not sound like you. | Checks any draft against your rules, by code, and names each line that fails. |
 | Agents act without asking. | Pushing, publishing, sending, spending and deleting come back as "needs your yes". |
-| You run more sessions than you can watch. | Shows what is working, what is waiting on you, what shipped and what is next. |
+| You run more sessions than you can watch. | Shows what shipped and what is next, and your open sessions if you turn that on. |
 
 ## Try it in one minute
 
@@ -36,7 +36,7 @@ It opens the demo twin in your browser. Then:
 - Hover the head. Every dot belongs to one note.
 - Type `do we ship on a Friday?` and it answers from the notes and shows which one.
 - Type `send the supplier email` and it stops and asks for a yes.
-- Click **Check a draft** and paste something with "I think maybe" in it.
+- Click **Check a draft** and paste something with "I think maybe" in it. It checks against the example rules until you set your own in Setup.
 - Drag the bar at the bottom back in time.
 
 ![Left: an answer with the note it came from. Right: a draft that fails the voice check](assets/twin-ask-check.png)
@@ -77,8 +77,10 @@ The default is nothing. The page always shows the current line in its top right 
 | You turn on | What leaves | Where |
 |---|---|---|
 | Nothing (the default) | Nothing | Nowhere |
-| Answers by Claude | Your question, the notes that match, and the work lists on the page | Claude, through your own CLI |
-| Voice | The text of each reply | ElevenLabs, through your own key |
+| Answers by Claude | Your question, the notes that match, your priorities, your repo and shipped lists, and your voice profile | Claude, through your own CLI |
+| Rewrite it as me | The draft, your voice rules and your voice profile. This runs even when answers are set to notes only | Claude, through your own CLI |
+| An ElevenLabs voice | The text of each reply. The system voice sends nothing | ElevenLabs, through your own key |
+| Cloning a voice | The recording you made, once | ElevenLabs, through your own key |
 | The head build | Your cut-out photo, once | fal, through your own key |
 
 Use your own face, voice and notes, or ones you have written consent for. A twin of a person is theirs. Do not use one to monitor or score anyone.

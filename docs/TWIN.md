@@ -32,11 +32,12 @@ Claude Code users: your memory folder (`~/.claude/projects/<project>/memory`) wo
 | Ask | Answers from your notes and shows which ones. Says so when the notes do not settle it. | Your choice |
 | Check a draft | Runs `scripts/twin_check.py` with your rules. Names each failing line. | No |
 | Rewrite it as me | Rewrites the draft, then checks the result. | Yes |
-| Limits | Pushing, publishing, sending, spending and deleting always come back as "needs your yes". The twin has no code that does any of them. | No |
+| Limits | Pushing, publishing, sending, spending and deleting always come back as "needs your yes", and so does anything that matches one of your limit notes. The twin has no code that does any of them. It cannot stop another tool from acting: it gives advice, and the session has to ask. | No |
 | Priorities | An ordered list. Type "add ..." or "done with 2". | No |
 | Shipped | What reached the main branch of the repos you listed. | No |
+| Sessions | Your open Claude Code sessions and which are waiting on you. Off by default, because it reads session titles from `~/.claude`. Turn it on in Setup. | No |
 | Audit my work | Read only. Not pushed, not committed, drafts that fail your rules, possible keys in tracked files, old notes. | No |
-| Timeline | Drag back to see what the twin knew on a given day. | No |
+| Timeline | A date filter over your current notes: drag back and notes first seen after that day drop away. It is not a stored history. | No |
 | Teach it | Type `teach: ...` and the note lands on the head. | No |
 
 ## Connect your coding sessions
@@ -69,7 +70,8 @@ A session can only propose. Nothing becomes part of the twin until you accept it
 | Setting | What leaves | Where |
 |---|---|---|
 | Answers: notes only (the default) | Nothing | Nowhere |
-| Answers: Claude | Your question, the few notes that match, and the work lists on the page | Claude, through your own `claude` CLI |
+| Answers: Claude | Your question, the notes that match, your priorities, your repo and shipped lists, and your voice profile. These are sent as they are, not redacted further | Claude, through your own `claude` CLI |
+| Rewrite it as me | The draft, your voice rules and your voice profile. This runs even when answers are set to notes only | Claude, through your own `claude` CLI |
 | Voice on, system voice | Nothing | Nowhere |
 | Voice on, ElevenLabs voice | The text of each reply | ElevenLabs, through your own key |
 | Cloning a voice | The recording you made, once | ElevenLabs, through your own key |
@@ -81,7 +83,7 @@ The page shows the current line in the top right at all times. The server listen
 
 ## What it is allowed to read
 
-Only the notes folder and the repos you list in Setup. It never walks your home folder. In the repos it runs git read commands and reads tracked text files. It has no code that writes to, moves or deletes your files. Its own data lives in `~/.twin`.
+Only the notes folder and the repos you list in Setup, plus Claude Code session titles if you turn that on. It never walks your home folder, and it will not follow a symlink that leads out of a folder you listed. Git runs with hooks switched off. In the repos it runs git read commands and reads tracked text files. It has no code that writes to, moves or deletes your files. Its own data lives in `~/.twin`.
 
 ## Keep things out
 
@@ -98,9 +100,21 @@ Four optional settings in `~/.twin/config.json`, each a regular expression:
 
 Speech to text runs on your machine with whisper.cpp. Install `whisper-cli` and `ffmpeg`, download a model file, and set `"whisper"` in `~/.twin/config.json` to its path (or `TWIN_WHISPER_MODEL` before the first run). Without it, typing works and the mic says what is missing.
 
+## Your voice rules
+
+**Check a draft** uses one rules file. Out of the box that is the example in `twins/example/`, not yours. To use your own, build a twin with the voice tools in this repo (see the README), then put the path to its `twin.rules.json` in Setup under Notes. Notes and "Teach it" add to memory. They do not change the checker's rules.
+
+## Your data
+
+Everything the twin keeps is in `~/.twin`: `twin.db` (priorities, notes you taught, your questions and its answers, proposals, and a log), `config.json`, the photo and head files, and cached speech. Questions and drafts you type are stored there as typed. Nothing in it expires on its own.
+
+- See what changed the twin, and when: `python3 twin/twin.py log`. It records each accepted or dropped proposal with its source, each note taught or marked, and each consent tick for a photo or a voice.
+- Take a copy: copy the `~/.twin` folder.
+- Delete everything: stop the twin and delete the `~/.twin` folder. A cloned voice lives on your ElevenLabs account and is deleted there. A head build ran on your fal account and is governed by its retention terms.
+
 ## Rules for using it
 
-- Your own face and voice, or ones you have written consent for.
+- Your own face and voice, or ones you have written consent for. Setup makes you tick a box for each. That is your statement, recorded with the time. The twin cannot verify it.
 - Your own notes. Never a coworker's messages or a client's data.
 - A twin of a person is theirs. Do not use one to monitor or score anyone.
 

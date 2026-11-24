@@ -10,6 +10,7 @@
 - Voice cloning in Setup: record 30 to 60 seconds, tick the consent box, and the voice is made on your own ElevenLabs account.
 - A free system voice (macOS `say`, or `espeak-ng`), so the twin can speak with no account and no text leaving the machine.
 - Learn from my repos: reads the instruction files in the repos you listed and proposes their rules as notes. Setup shows exactly what will be read first.
+- After an outside review: the session list is off by default, symlinks cannot lead out of a listed folder, git runs with hooks off, the limits tool never clears an action that matches a limit note, a consent tick is required for photos and voices and is logged, and `python3 twin/twin.py log` shows what changed the twin.
 - A demo twin that runs with no setup: a generated face and made-up notes in `examples/twin-notes/`.
 - `docs/TWIN.md`: how to run it, connect it, what leaves the machine for each setting, and its limits today.
 - `tests/test_twin_app.py`: ten offline tests on the sample.
