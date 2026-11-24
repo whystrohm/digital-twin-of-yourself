@@ -606,6 +606,36 @@ def build_status():
     return {"status": s}
 
 
+def clone_voice(raw, path):
+    """Makes a voice on the owner's ElevenLabs account from one recording. Only runs with the consent box ticked."""
+    from urllib.parse import urlparse, parse_qs
+    q = parse_qs(urlparse(path).query); key = os.environ.get("ELEVENLABS_API_KEY")
+    if q.get("consent", [""])[0] != "1": return {"error": "Tick the consent box first."}
+    if not key: return {"error": "No ElevenLabs key."}
+    if len(raw) < 20000: return {"error": "The recording is too short."}
+    name = (re.sub(r"[^\w .'-]", "", q.get("name", ["Twin"])[0])[:30] or "Twin") + " twin"
+    with tempfile.TemporaryDirectory() as d:
+        a, m = os.path.join(d, "a.webm"), os.path.join(d, "a.mp3"); open(a, "wb").write(raw)
+        run(["ffmpeg", "-y", "-i", a, "-ac", "1", "-ar", "44100", "-b:a", "128k", m], timeout=60)
+        ok = os.path.exists(m) and os.path.getsize(m) > 1000
+        data, fn, ct = (open(m, "rb").read(), "voice.mp3", "audio/mpeg") if ok else (raw, "voice.webm", "audio/webm")
+    bnd = secrets.token_hex(16); parts = []
+    for k, v in (("name", name), ("description", "Made in the twin setup, with the consent box ticked.")):
+        parts.append(("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (bnd, k, v)).encode())
+    parts.append(("--%s\r\nContent-Disposition: form-data; name=\"files\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n" % (bnd, fn, ct)).encode() + data + b"\r\n")
+    parts.append(("--%s--\r\n" % bnd).encode())
+    req = urllib.request.Request("https://api.elevenlabs.io/v1/voices/add", data=b"".join(parts), headers={"xi-api-key": key, "Content-Type": "multipart/form-data; boundary=" + bnd})
+    try: vid = json.load(urllib.request.urlopen(req, timeout=120))["voice_id"]
+    except urllib.error.HTTPError as e:
+        try: msg = json.load(e)["detail"]["message"]
+        except Exception: msg = "ElevenLabs said %d" % e.code
+        return {"error": str(msg)[:200]}
+    except Exception:
+        return {"error": "ElevenLabs did not answer."}
+    CFG["voice_id"], CFG["voice_name"] = vid, name; json.dump(CFG, open(CFG_PATH, "w"), indent=2)
+    return {"voice_id": vid, "voice_name": name}
+
+
 # ------------------------------------------------------------------ http
 
 TYPES = {".bin": "application/octet-stream", ".ttf": "font/ttf"}
@@ -646,6 +676,7 @@ class H(BaseHTTPRequestHandler):
         raw = self.rfile.read(n); p = self.path
         try:
             if p == "/api/listen": return self.send({"text": listen(raw)})
+            if p.startswith("/api/voice/clone?"): return self.send(clone_voice(raw, p))
             if p == "/api/setup/photo": return self.send(build_head(raw))
             if p == "/api/setup/check": return self.send(check_photo(raw))
             d = json.loads(raw or b"{}")

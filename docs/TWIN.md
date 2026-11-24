@@ -17,8 +17,8 @@ Open **Setup** in the top right.
 | Step | What you do | What it needs |
 |---|---|---|
 | 1. Face | Drop one photo. It checks the photo first and says what to fix. Then it builds a 3D head. | `FAL_KEY` in your shell, and `pip install numpy pillow trimesh opencv-python rembg`. One paid build on your own fal account. |
-| 2. Voice | Pick a voice from your ElevenLabs account. Click one to hear it. | `ELEVENLABS_API_KEY` in your shell. Optional. |
-| 3. Notes | Set your name, your notes folder and the git repos it may read. | A folder of Markdown, one note per file. See `examples/twin-notes/`. |
+| 2. Voice | Pick a voice from your ElevenLabs account, or record 30 to 60 seconds and clone your own. Cloning needs the consent box ticked and sends the recording to ElevenLabs. | `ELEVENLABS_API_KEY` in your shell. Optional. |
+| 3. Notes | Set your name, your notes folder and the git repos it may read. Then it reads the notes in, and the head fills as each one lands. | A folder of Markdown, one note per file. See `examples/twin-notes/`. |
 
 No photo is fine. The twin works with the demo head and your own notes.
 
@@ -71,6 +71,7 @@ A session can only propose. Nothing becomes part of the twin until you accept it
 | Answers: notes only (the default) | Nothing | Nowhere |
 | Answers: Claude | Your question, the few notes that match, and the work lists on the page | Claude, through your own `claude` CLI |
 | Voice on | The text of each reply | ElevenLabs, through your own key |
+| Cloning a voice | The recording you made, once | ElevenLabs, through your own key |
 | Building the head | The cut-out photo, once | fal, through your own key |
 | The photo check, first run | A request for a small face-finder model | github.com/opencv/opencv_zoo |
 | Everything else | Nothing | A folder on your machine (`~/.twin`) |
@@ -102,5 +103,5 @@ Speech to text runs on your machine with whisper.cpp. Install `whisper-cli` and 
 
 - The session list reads Claude Code sessions only.
 - Answers by Claude need the `claude` CLI.
-- Cloning a new voice from a recording is not built. Pick an existing voice.
+- Voice cloning depends on your ElevenLabs plan allowing instant clones.
 - The head build has been run on two faces. Odd angles, hats and glasses can still throw the mouth line off.
