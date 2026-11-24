@@ -46,6 +46,53 @@ class TwinApp(unittest.TestCase):
     def test_draft_check_uses_the_example_rules(self):
         self.assertFalse(twin.check("I think maybe we could perhaps look at it.")["passed"])
 
+    def test_http_rejects_bad_shapes_without_dispatch(self):
+        import io
+        from unittest.mock import Mock
+        for endpoint, body in (("ask", {"q": 2}), ("config", []), ("proposal", {"id": 1, "accept": "no", "uid": "old"}), ("teach", {"text": ""})):
+            with self.subTest(endpoint=endpoint):
+                data = json.dumps(body).encode()
+                request = Mock(path="/api/" + endpoint, headers={"Content-Length": str(len(data))}, rfile=io.BytesIO(data))
+                twin.H.do_POST(request)
+                self.assertEqual(request.send.call_args.kwargs.get("code"), 400)
+
+    def test_head_preflight_discards_original_and_busy_jobs_do_not_log_consent(self):
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+        with tempfile.TemporaryDirectory() as folder:
+            head = Path(folder) / "head"
+            with patch.object(twin, "HEAD", str(head)), patch.object(twin, "run", return_value='{"ok": true}'):
+                self.assertTrue(twin.check_photo(b"sample")["ok"])
+                self.assertFalse(list(head.glob("*")))
+            with patch.dict(twin.BUILD, proc=Mock(**{"poll.return_value": None})), patch.object(twin, "audit_log") as log:
+                self.assertIn("Already", twin.build_head(b"sample")["status"])
+                log.assert_not_called()
+
+    def test_head_builder_checks_permission_and_key_before_loading_models(self):
+        import pathlib
+        script = os.path.join(ROOT, "twin", "head", "build.py")
+        with tempfile.TemporaryDirectory() as folder:
+            dest = pathlib.Path(folder) / "output"
+            for switches, reason in (([], "consent"), (["--consent"], "FAL_KEY")):
+                job = subprocess.run([sys.executable, "-BS", script, "--photo", "example.jpg", "--out", str(dest)] + switches,
+                                     env={k: v for k, v in os.environ.items() if k != "FAL_KEY"}, capture_output=True, text=True)
+                self.assertNotEqual(job.returncode, 0)
+                self.assertIn(reason, job.stderr)
+                self.assertFalse(dest.exists())
+
+    def test_local_reads_close_streams_and_respect_profile_filter(self):
+        import gc, warnings
+        from unittest.mock import patch
+        with warnings.catch_warnings(record=True) as found, patch.object(twin, "claude", return_value=""), patch.object(twin, "state", return_value={"priorities": [], "repos": [], "shipped": []}):
+            warnings.simplefilter("always", ResourceWarning)
+            twin.think("What paper?", [], [])
+            twin.rewrite("Use card stock.")
+            gc.collect()
+        self.assertFalse([str(w.message) for w in found if issubclass(w.category, ResourceWarning)])
+        with patch.object(twin, "HARD", twin._Rx("sample private phrase", None)), patch.object(twin.subprocess, "run") as model:
+            self.assertEqual(twin.claude("sample private phrase", "ordinary text"), "")
+            model.assert_not_called()
+
     def test_priorities_by_command(self):
         twin.ask("add call the electrician to my priorities", "recall")
         self.assertIn("call the electrician", [p["text"] for p in twin.priorities()])

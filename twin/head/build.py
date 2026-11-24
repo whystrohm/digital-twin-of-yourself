@@ -1,12 +1,14 @@
 """Photo or mesh -> head.bin + head.json for the twin page.
-  build.py --photo me.jpg --out DIR     (cuts the person out, sends the cut-out to fal once, about $0.38, needs FAL_KEY)
-  build.py --glb model.glb --out DIR    (no network)
+  build.py --photo me.jpg --out DIR     (use --consent to send the cut-out to fal with FAL_KEY)
+  build.py --glb model.glb --out DIR    (the face detector downloads if missing)
 Needs numpy, pillow, trimesh, opencv, rembg (photo only). Finds the face on the mesh itself, so regions and the jaw fit any head."""
 import argparse,base64,json,os,sys,time,urllib.request
-import numpy as np, trimesh, cv2
-from PIL import Image
 HERE=os.path.dirname(os.path.abspath(__file__))
 ap=argparse.ArgumentParser(); ap.add_argument('--photo'); ap.add_argument('--glb'); ap.add_argument('--consent',action='store_true',help='you confirm this is your own photo, or you have written consent from the person in it');ap.add_argument('--body',action='store_true',help='a full-length photo: keep the whole figure');ap.add_argument('--left-front');ap.add_argument('--right-front');ap.add_argument('--ref',help='the cut-out photo the mesh was built from');ap.add_argument('--check',help='look at a photo and say what to fix; prints JSON');ap.add_argument('--out'); ap.add_argument('--points',type=int,default=270000); a=ap.parse_args()
+if a.photo and not a.consent: ap.error('Add --consent to confirm permission to use the photo.')
+if a.photo and not os.environ.get('FAL_KEY'): ap.error('Set FAL_KEY before building a head.')
+import numpy as np, cv2
+from PIL import Image
 YUNET=os.path.join(HERE,'yunet.onnx'); YUNET_URL='https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
 def yunet():
     if not os.path.exists(YUNET): urllib.request.urlretrieve(YUNET_URL,YUNET)   # a small face finder, fetched once
@@ -33,7 +35,7 @@ if a.check:
 if not a.out: ap.error('--out is required')
 os.makedirs(a.out,exist_ok=True)
 def say(s): print(s,flush=True); open(os.path.join(a.out,'status.txt'),'w').write(s)
-if a.photo and not a.consent: sys.exit('Add --consent to confirm this is your own photo, or that you have written consent from the person in it.')
+import trimesh
 if a.photo:
     say('Cutting you out of the photo')
     from rembg import remove,new_session
