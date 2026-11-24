@@ -4,9 +4,9 @@
 
 A twin of you that runs on your machine. It remembers how you decide, what you like, how you write and what it must never do. You can see it, ask it and correct it, and every coding session you run can ask it first.
 
-![DIGITAL TWIN. A head made of dots turns while four panels fire in turn: it remembers a note, answers from one, fails a hype-filled draft, and stops at a limit](assets/twin-cover.webp)
+![DIGITAL TWIN. One photo becomes a head made of dots. It sees your work, knows your rules, answers a question out loud, then says: build yours](assets/twin-cover.webp)
 
-*The author's own twin, built from one photo, running on a short public set of his rules. The draft check and the limit stop are the tool's real output.*
+*The author's own twin, built from one photo, on a short public set of his rules. The work counts on screen are examples.*
 
 ![The page: the head with one note open, showing the note, the reason and the date](assets/twin.png)
 
