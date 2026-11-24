@@ -4,7 +4,7 @@
 
 A twin of you that runs on your machine. It remembers how you decide, what you like, how you write and what it must never do. You can see it, ask it and correct it, and every coding session you run can ask it first.
 
-![DIGITAL TWIN. A chat bar types "build my twin" and a head made of dots forms as it learns decisions, taste, voice, work and limits. It answers a question, fails a hedged draft, and stops at a limit. Build yours](assets/twin-cover.webp)
+![DIGITAL TWIN. A photo is dragged into a drop box and becomes a head made of dots. A chat line types: it learns your notes, answers a question, fails a hedged draft, and stops at a limit. Build yours](assets/twin-cover.webp)
 
 *A made-up person: a generated face and made-up notes. The answer, the draft check and the limit stop are the tool's real output on that sample.*
 
