@@ -125,6 +125,8 @@ Speech to text runs on your machine with whisper.cpp. Install `whisper-cli` and 
 
 **Check a draft** uses one rules file. Claude answers and rewrites also use one voice profile. Both start as labeled examples in `twins/example/`. Build your own with the voice tools, then select both `twin.rules.json` and `twin.md` in Setup under Notes. Changing the rules file does not change the profile. You can also set their paths as `rules` and `persona` in `~/.twin/config.json`. Notes and "Teach it" add to memory. They do not change either file.
 
+Check accepts up to 60,000 characters. Rewrite accepts up to 6,000. Longer drafts return an error before checking or calling the model. Split them into shorter sections; the app does not silently cut off the rest.
+
 ## Your data
 
 The local data folder defaults to `~/.twin`; `TWIN_HOME` can select another one. It holds `twin.db` (priorities, questions, answers, pending proposals, reviews, client-use records and the log), `config.json`, learned Markdown notes, submitted build photos/intermediates, heads and cached speech. Questions and priorities can retain the text you entered. Persistent records have no expiry.

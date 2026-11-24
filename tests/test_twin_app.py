@@ -1195,6 +1195,76 @@ class PrivacyDocs(unittest.TestCase):
             with self.subTest(document=name):
                 self.assertIsNone(banned.search(self.read_doc(name)))
 
+    def test_default_demo_distinguishes_local_http_from_remote_transfer(self):
+        text = self.read_doc("README.md").split("## What leaves your machine", 1)[1].split("\n## ", 1)[0]
+        self.assertNotIn("makes no network requests", text)
+        self.assertIn("sends nothing off this machine", text)
+        self.assertIn("local HTTP", text)
+
+
+
+class DraftLengthBounds(unittest.TestCase):
+    def test_readme_states_the_draft_check_limit(self):
+        from pathlib import Path
+        text = (Path(ROOT) / "README.md").read_text()
+        self.assertIn("Checks drafts up to 60,000 characters", text)
+
+    def test_repo_audit_reports_a_draft_it_could_not_check(self):
+        from pathlib import Path
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as root:
+            repo = Path(root) / "sample"
+            (repo / ".git").mkdir(parents=True)
+            (repo / "draft.md").write_text("X" * 60001)
+            def sample_git(args, cwd, **kw):
+                return "draft.md" if args[0] == "log" else ""
+            with patch.object(twin, "HOME", root), patch.dict(twin.CFG, repos=["sample"]), patch.object(twin, "git", side_effect=sample_git):
+                result = twin.audit()
+            self.assertTrue(any(row["kind"] == "Draft not checked" and "draft.md" in row["what"]
+                                for row in result["findings"]))
+
+    def test_draft_limits_are_visible_before_submission(self):
+        for name in ("twin/ui.html", "docs/TWIN.md"):
+            with self.subTest(document=name):
+                with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                    text = f.read()
+                self.assertIn("60,000", text)
+                self.assertIn("6,000", text)
+
+    def test_readme_requires_review_before_sharing_patterns(self):
+        with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertNotIn("The prompt extracts principles, not data", text)
+        self.assertNotIn("Share your patterns freely", text)
+        self.assertIn("Review patterns before sharing", text)
+
+    def test_check_rejects_a_draft_with_unchecked_suffix(self):
+        draft = "Done.\n" * 10000 + "I think maybe."
+        result = twin.check(draft)
+        self.assertIn("error", result)
+        self.assertIn("60,000", result["error"])
+
+    def test_rewrite_rejects_long_drafts_before_calling_a_model(self):
+        from unittest.mock import patch
+        with patch.object(twin, "claude", return_value="Done.") as model:
+            result = twin.rewrite("Done.\n" * 1001)
+        model.assert_not_called()
+        self.assertIn("error", result)
+        self.assertIn("6,000", result["error"])
+
+    def test_check_accepts_a_draft_at_its_limit(self):
+        result = twin.check("Done.\n" * 10000)
+        self.assertNotIn("error", result)
+        self.assertTrue(result["passed"])
+
+    def test_rewrite_accepts_a_draft_at_its_limit(self):
+        from unittest.mock import patch
+        with patch.object(twin, "claude", return_value="Done.") as model:
+            result = twin.rewrite("Done.\n" * 1000)
+        model.assert_called_once()
+        self.assertNotIn("error", result)
+        self.assertEqual(result["text"], "Done.")
+
 
 if __name__ == "__main__":
     unittest.main()

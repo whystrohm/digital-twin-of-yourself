@@ -841,7 +841,8 @@ def read_profile():
 
 
 def rewrite(text):
-    text = text[:6000]
+    if len(text) > 6000:
+        return {"error": "Rewrite accepts at most 6,000 characters. Split the draft into shorter sections."}
     if HARD.search(text): return {"error": "That is outside this workspace."}
     try:
         rules = json.loads(read_note(CFG["rules"]))["rules"]
@@ -906,9 +907,11 @@ def ask(q, mode):
 
 
 def check(text):
+    if len(text) > 60000:
+        return {"error": "Check accepts at most 60,000 characters. Split the draft into shorter sections."}
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "draft.md")
-        with open(p, "w") as f: f.write(text[:60000])
+        with open(p, "w") as f: f.write(text)
         rules = Path(d, "rules.json")
         try: rules.write_text(read_note(CFG["rules"]), encoding="utf-8")
         except (OSError, ValueError): return {"error": "The selected rules file could not be read."}
@@ -1391,7 +1394,11 @@ def audit():
             except (OSError, ValueError): continue
             seen.append(f)
             if HARD.search(txt): continue
-            c = check(re.sub(r"\A---.*?\n---\s*", "", txt, flags=re.S)); bad = [x for x in c.get("results", []) if not x["passed"] and x["severity"] == "error"]
+            c = check(re.sub(r"\A---.*?\n---\s*", "", txt, flags=re.S))
+            if c.get("error"):
+                out.append({"kind": "Draft not checked", "where": name, "what": "%s: %s" % (f, c["error"]), "level": "warn"})
+                continue
+            bad = [x for x in c.get("results", []) if not x["passed"] and x["severity"] == "error"]
             if bad: out.append({"kind": "Off voice", "where": name, "what": "%s fails %s" % (f, ", ".join(x["id"].replace("-", " ") for x in bad)), "level": "warn"})
     st = [e for e in IX.get().e if e["stale"]]
     if st: out.append({"kind": "Old notes", "where": "memory", "what": "%d notes say something is unfinished and have not been touched in two weeks" % len(st), "level": "info"})

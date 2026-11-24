@@ -20,7 +20,7 @@ Built for people who already work with coding agents and are tired of correcting
 |---|---|
 | Your corrections do not carry. You fix it in one session and fix it again in the next tool. | Keeps each decision as a plain file with its source and date. Any session that speaks MCP can ask for it. |
 | Instruction files drift. Nobody knows which rule is current or where it came from. | A new decision can replace an old one. The old one is kept, marked replaced, and can be restored. |
-| AI drafts do not sound like you. | Checks any draft against your rules, by code, and names each line that fails. |
+| AI drafts do not sound like you. | Checks drafts up to 60,000 characters against your rules and names each line that fails. |
 | Agents act without asking. | Reports matching limits and asks for your yes on restricted actions it recognizes. It gives advice. It cannot stop another tool from acting. |
 | You run more sessions than you can watch. | Shows what shipped and what is next, and your open sessions if you turn that on. |
 
@@ -81,7 +81,7 @@ claude mcp add twin -- python3 /full/path/to/twin/twin_mcp.py
 
 ## What leaves your machine
 
-The default typed demo makes no network requests after you obtain the repo. The page labels answer and speech modes. Read the action's disclosure before enabling a remote feature. Connecting an MCP client also shares results with that client.
+The default typed demo sends nothing off this machine after you obtain the repo. The page uses local HTTP to talk to the app. It labels answer and speech modes. Read the action's disclosure before enabling a remote feature. Connecting an MCP client also shares results with that client.
 
 | You turn on | What leaves | Where |
 |---|---|---|
@@ -256,8 +256,8 @@ Prompt files do not execute on their own. Pasting them and your writing into a h
 1. Use your own writing that you have permission to use. Company material needs approval for this purpose. Remove other people's words and identifying or confidential details first.
 2. A Twin of another person needs that person's written consent. The same goes for cloning anyone's voice for audio.
 3. Scrub names and identifying details before you scan. Redaction catches emails, phone numbers and money amounts, not names.
-4. The prompt extracts principles, not data. No names belong in the output.
-5. Share your patterns freely. Keep the System Prompt private.
+4. The prompt asks for principles, but its output can still contain source details. Read it and remove identifying or confidential text.
+5. Review patterns before sharing. Keep the System Prompt private.
 6. Layer 3: use one dedicated folder. Never scan your home directory.
 7. Once an AI reads a file, it is in the session. Scrub BEFORE you scan.
 
