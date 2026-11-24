@@ -27,6 +27,12 @@ Three depth levels depending on available data:
 - **Layer 2**: Conversation memory (Claude with memory enabled)
 - **Layer 3**: File system scan (Claude Code or Cowork), measured by the scripts
 
+## The twin app
+
+This repo also ships a twin you can see and ask. If the user has the repo cloned and asks to run, open or set up their twin, tell them to run `python3 twin/twin.py` from the repo folder. It opens a local page: a head built from one photo, where every dot belongs to one of their notes. It answers from those notes, checks drafts with the rules this skill writes, and stops at their limits. Setup, the MCP server for coding sessions, and what leaves the machine are in `docs/TWIN.md`.
+
+The `twin.rules.json` and `twin.md` this skill produces are what the twin app uses for its voice check. Point the app at them by setting `rules` and `persona` in `~/.twin/config.json`.
+
 ## Consent
 
 Only build a Twin of the user's own writing, or of another person who has

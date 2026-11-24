@@ -83,6 +83,10 @@ The default is nothing. The page always shows the current line in its top right 
 
 Use your own face, voice and notes, or ones you have written consent for. A twin of a person is theirs. Do not use one to monitor or score anyone.
 
+## Pairs with Shotkit
+
+[Shotkit](https://github.com/whystrohm/shotkit) plans and checks on-brand video inside Claude Code. The twin holds your taste and your limits. Run both and a video session can ask the twin what you like before it plans a shot, and propose what it learned when you approve or reject one.
+
 ---
 
 # The voice tools

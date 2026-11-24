@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-### Added: the twin (planned as 4.0.0)
+### Added: the twin (4.0.0)
 - `twin/twin.py`: a local page and server. A head made of dots where every dot belongs to one note, with its reason, source and date. Ask it, check and rewrite drafts, an ordered priority list, what shipped, a read-only audit, a timeline, and "teach it". Standard library only. Listens on `127.0.0.1` only.
 - `twin/twin_mcp.py`: the twin as an MCP server. Seven tools so a coding session can recall a decision, check a draft, ask whether an action needs a yes, and propose a note. A proposal does nothing until it is accepted in the page.
 - Setup in the page: a photo check that runs before any paid step, a 3D head built from one photo (`twin/head/build.py`, needs a fal key and extra packages), a voice picked from an ElevenLabs account, a notes folder and a list of repos.
