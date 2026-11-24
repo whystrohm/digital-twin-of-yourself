@@ -11,6 +11,8 @@
 - A free system voice (macOS `say`, or `espeak-ng`), so the twin can speak with no account and no text leaving the machine.
 - Learn from my repos: reads the instruction files in the repos you listed and proposes their rules as notes. Setup shows exactly what will be read first.
 - After an outside review: the session list is off by default, symlinks cannot lead out of a listed folder, git runs with hooks off, the limits tool never clears an action that matches a limit note, a consent tick is required for photos and voices and is logged, and `python3 twin/twin.py log` shows what changed the twin.
+- Learned notes are plain Markdown files in `~/.twin/notes/`. A new note can replace an old one; the old one is kept and can be restored. Notes carry a scope. `twin.py export` writes everything as files.
+- The page shows which client last asked the twin. `validation/twin_loop.py` runs the learning loop with fresh sessions, and `validation/LOOP_RESULTS.md` holds one real run.
 - A demo twin that runs with no setup: a generated face and made-up notes in `examples/twin-notes/`.
 - `docs/TWIN.md`: how to run it, connect it, what leaves the machine for each setting, and its limits today.
 - `tests/test_twin_app.py`: ten offline tests on the sample.

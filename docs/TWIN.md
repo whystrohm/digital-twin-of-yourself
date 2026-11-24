@@ -65,6 +65,16 @@ Any other MCP client: add a server whose command is `python3` and whose argument
 
 A session can only propose. Nothing becomes part of the twin until you accept it.
 
+The page shows which client last asked the twin and when, under the session list. If it says no session has asked yet, the connection is not being used.
+
+## How it learns, and how you undo it
+
+- Everything the twin learns is one Markdown file in `~/.twin/notes/`, with its area, scope, source and the time you accepted it. You can read, edit, copy or delete those files by hand.
+- When a proposed note clashes with one you already have, the page shows both and asks: replace the old one, keep both, or drop it.
+- A replaced note is kept and marked replaced. **Review** lists replaced notes with a Restore button.
+- A note has a scope: `personal`, `brand`, or `project:<name>`. A session can pass its project name to `twin_recall`, and notes for that project rank first.
+- `python3 twin/twin.py export FOLDER` writes the twin's own notes, a `memory.json` of every note it can read, the rules file and the log.
+
 ## What leaves your machine
 
 | Setting | What leaves | Where |
@@ -109,7 +119,7 @@ Speech to text runs on your machine with whisper.cpp. Install `whisper-cli` and 
 Everything the twin keeps is in `~/.twin`: `twin.db` (priorities, notes you taught, your questions and its answers, proposals, and a log), `config.json`, the photo and head files, and cached speech. Questions and drafts you type are stored there as typed. Nothing in it expires on its own.
 
 - See what changed the twin, and when: `python3 twin/twin.py log`. It records each accepted or dropped proposal with its source, each note taught or marked, and each consent tick for a photo or a voice.
-- Take a copy: copy the `~/.twin` folder.
+- Take a copy: copy the `~/.twin` folder, or run `python3 twin/twin.py export FOLDER` for plain files only.
 - Delete everything: stop the twin and delete the `~/.twin` folder. A cloned voice lives on your ElevenLabs account and is deleted there. A head build ran on your fal account and is governed by its retention terms.
 
 ## Rules for using it

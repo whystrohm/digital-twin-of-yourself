@@ -66,10 +66,15 @@ create table if not exists taught(id integer primary key, text text, area text, 
 create table if not exists review(key text primary key, verdict text, at text);
 create table if not exists chat(id integer primary key, at text, who text, text text, sources text);
 create table if not exists shipped(hash text primary key, repo text, at text, subject text);
+create table if not exists replaced(old_id text primary key, title text, by_id text, at text);
+create table if not exists clients(name text primary key, last_at text, last_tool text, calls integer);
 create table if not exists log(id integer primary key, at text, action text, detail text);
 create table if not exists proposed(id integer primary key, text text, area text, source text, created text);
 """)
 os.chmod(os.path.join(STORE, "twin.db"), 0o600)
+try: DB.execute("alter table proposed add column scope text default 'personal'")
+except sqlite3.OperationalError: pass
+NOTES = os.path.join(STORE, "notes"); os.makedirs(NOTES, exist_ok=True)
 
 
 def now(): return datetime.now().isoformat(timespec="seconds")
@@ -119,6 +124,33 @@ TASTE = re.compile(r"\b(look|style|colou?r|visual|type|caption|frame|film|reel|v
 VOICE = re.compile(r"\b(voice|reply|replies|prose|copy|word|email|message|greeting|hashtag|dm|text|heading|sentence)\w*\b", re.I)
 
 
+def fm(raw, key):
+    m = re.search(r"^%s:[ \t]*(.*)$" % key, raw[:2000], re.M)
+    return m.group(1).strip() if m else ""
+
+
+def save_note(text, area, source, scope="personal", replaces=""):
+    """Everything the twin learns is one plain Markdown file in its notes folder: readable, editable, easy to back up."""
+    text = " ".join(str(text).split()); slug = re.sub(r"[^a-z0-9]+", "-", text.lower())[:48].strip("-") or "note"
+    p = os.path.join(NOTES, "%s-%s.md" % (now()[:10], slug)); n = 2
+    while os.path.exists(p): p = os.path.join(NOTES, "%s-%s-%d.md" % (now()[:10], slug, n)); n += 1
+    scope = scope if re.fullmatch(r"personal|brand|project:[\w.-]{1,60}", scope or "") else "personal"
+    with open(p, "w") as f:
+        f.write("---\ndescription: %s\narea: %s\nscope: %s\nsource: %s\naccepted: %s\n%s---\n\n%s\n" % (text, area if area in AREAS else "decisions", scope, " ".join(str(source).split())[:80], now(), ("replaces: %s\n" % replaces) if replaces else "", text))
+    return "own:" + os.path.basename(p)[:-3]
+
+
+def set_status(note_id, status, by=""):
+    """Marks one of the twin's own notes replaced or active again by editing its front matter. The text is kept."""
+    p = os.path.join(NOTES, note_id[4:] + ".md")
+    if not note_id.startswith("own:") or not inside(p, NOTES) or not os.path.isfile(p): return False
+    with open(p) as f: raw = f.read()
+    raw = re.sub(r"^(status|replaced_by): .*\n", "", raw, flags=re.M)
+    if status == "replaced": raw = raw.replace("---\n\n", "status: replaced\nreplaced_by: %s\n---\n\n" % by, 1)
+    with open(p, "w") as f: f.write(raw)
+    return True
+
+
 def first_date(body, path):
     ds = [d for d in re.findall(r"20\d\d-\d\d-\d\d", body) if "2025-01-01" <= d <= now()[:10]]
     m = re.search(r"modified:\s*(20\d\d-\d\d-\d\d)", body)
@@ -162,7 +194,7 @@ def load_entries():
             stale = 'Says "%s". Last touched %d days ago.' % (m.group(0).lower(), age)
         body = "\n".join(l for l in body.splitlines() if not EXCL.search(l))
         out.append({"id": base[:-3], "area": area, "title": redact(desc)[:260], "why": redact(why.group(1))[:240].rsplit(' ', 1)[0] if why and not EXCL.search(why.group(1)) else "",
-                    "since": since, "mod": mod, "src": base, "stale": stale, "body": redact(body)[:6000]})
+                    "since": since, "mod": mod, "src": base, "stale": stale, "body": redact(body)[:6000], "scope": fm(raw, "scope") or "personal"})
     try:
         rules = json.load(open(CFG["rules"]))
         mod = datetime.fromtimestamp(os.path.getmtime(CFG["rules"])).date().isoformat()
@@ -175,9 +207,17 @@ def load_entries():
                         "src": os.path.basename(CFG["rules"]), "stale": "", "body": desc})
     except Exception:
         pass
-    for r in DB.execute("select * from taught"):
-        out.append({"id": "taught:%d" % r["id"], "area": r["area"], "title": r["text"], "why": "", "since": r["created"][:10],
-                    "mod": r["created"][:10], "src": "taught in this window", "stale": "", "body": r["text"]})
+    for r in list(DB.execute("select * from taught")):          # older versions kept taught notes in the database: move them to files
+        save_note(r["text"], r["area"], "taught in the page"); DB.execute("delete from taught where id=?", (r["id"],))
+    DB.commit()
+    for path in sorted(glob.glob(os.path.join(NOTES, "*.md"))):
+        with open(path, errors="replace") as f: raw = f.read()
+        text = fm(raw, "description")
+        if not text or HARD.search(raw) or fm(raw, "status") == "replaced" or not inside(path, NOTES): continue
+        d = fm(raw, "accepted")[:10] or now()[:10]
+        out.append({"id": "own:" + os.path.basename(path)[:-3], "area": fm(raw, "area") if fm(raw, "area") in AREAS else "decisions", "title": text,
+                    "why": ("Replaces: " + fm(raw, "replaces")) if fm(raw, "replaces") else "", "since": d, "mod": d, "src": "your twin · " + (fm(raw, "source") or "taught"),
+                    "stale": "", "body": text, "scope": fm(raw, "scope") or "personal"})
     verd = {r["key"]: r["verdict"] for r in DB.execute("select * from review")}
     keep = []
     for e in out:
@@ -205,7 +245,8 @@ class Index:
     def get(self):
         with LOCK:
             files = glob.glob(os.path.join(CFG["memory"], "*.md"))
-            sig = (len(files), max([os.path.getmtime(f) for f in files] or [0]),
+            own = glob.glob(os.path.join(NOTES, "*.md"))
+            sig = (len(files), max([os.path.getmtime(f) for f in files] or [0]), len(own), max([os.path.getmtime(f) for f in own] or [0]),
                    DB.execute("select count(*) from taught").fetchone()[0], DB.execute("select count(*) from review").fetchone()[0])
             if sig != self.sig:
                 self.e = load_entries(); self.df = {}; self.tf = []
@@ -218,7 +259,7 @@ class Index:
                 self.sig = sig
             return self
 
-    def search(self, q, k=6):
+    def search(self, q, k=6, project=""):
         import math
         self.get(); N = len(self.e) or 1
         qs = list(dict.fromkeys(toks(q)))
@@ -233,10 +274,10 @@ class Index:
                 if hit < min(2, len(qs)): continue
                 try: rec = max(0, 1 - (datetime.now() - datetime.fromisoformat(x["mod"])).days / 365)
                 except Exception: rec = 0
-                res.append((s * (.6 + cov) * (1 + .25 * rec), cov, x))
+                res.append((s * (.6 + cov) * (1 + .25 * rec) * (1.35 if project and x.get("scope") == "project:" + project else 1), cov, x))
         res.sort(key=lambda r: -r[0])
         best = res[0][1] if res else 0
-        level = "strong" if best >= .75 and qs else "some" if best >= .55 else "not enough"
+        level = "strong" if best >= .75 and qs else "some" if best >= .4 else "not enough"
         return level, [dict(r[2], cov=round(r[1], 2)) for r in res[:k] if r[1] >= .4 and r[0] >= .45 * res[0][0]]
 
 
@@ -319,7 +360,8 @@ def priorities():
 def state():
     e = IX.get().e
     return {"name": CFG["name"], "areas": AREAS, "now": now(),
-            "entries": [{k: x[k] for k in ("id", "area", "title", "why", "since", "mod", "src", "stale")} for x in e],
+            "entries": [dict({k: x[k] for k in ("id", "area", "title", "why", "since", "mod", "src", "stale")}, scope=x.get("scope", "personal")) for x in e],
+            "replaced": [dict(r) for r in DB.execute("select * from replaced order by at desc limit 30")], "clients": clients(),
             "terminals": cached("t", 4, terminals)[0], "hidden": cached("t", 4, terminals)[1], "repos": cached("r", 30, repos), "shipped": shipped(), "priorities": priorities(),
             "workspace": CFG.get("workspace", ""), "proposals": proposals(), "sessions_on": bool(CFG.get("read_sessions", True)), "voice_local": CFG.get("voice_id") == "system", "voice": (CFG.get("voice_id") == "system" and bool(sys_voice())) or (bool(os.environ.get("ELEVENLABS_API_KEY")) and bool(CFG.get("voice_id"))), "whisper": can_listen()}
 
@@ -514,21 +556,76 @@ def listen(blob):
 # ------------------------------------------------------------------ proposals from sessions, and the audit
 
 
-def propose(text, area, source):
+def conflict(text, area):
+    """An existing note in the same area that says something close enough to clash."""
+    w = set(toks(text)); best = None
+    for e in IX.get().e:
+        if e["area"] != area or e["title"] == text: continue
+        t = set(toks(e["title"])); sh = len(w & t)
+        if sh >= 2 and sh / max(1, min(len(w), len(t))) >= .5 and (not best or sh > best[0]): best = (sh, e)
+    return {"id": best[1]["id"], "title": best[1]["title"], "src": best[1]["src"]} if best else None
+
+
+def replace_note(old, new_id, new_text):
+    """The old note is kept and marked replaced. It can be restored."""
+    with LOCK:
+        if not set_status(old["id"], "replaced", new_id): DB.execute("insert or replace into review values(?,?,?)", (old["id"], "outdated", now()))
+        DB.execute("insert or replace into replaced values(?,?,?,?)", (old["id"], old["title"], new_id, now())); DB.commit()
+    audit_log("note replaced", "%s -> %s" % (old["title"], new_text)); IX.sig = None
+
+
+def restore(old_id):
+    with LOCK:
+        r = DB.execute("select * from replaced where old_id=?", (old_id,)).fetchone()
+        if not r: return False
+        if not set_status(old_id, "active"): DB.execute("delete from review where key=?", (old_id,))
+        DB.execute("delete from replaced where old_id=?", (old_id,)); DB.commit()
+    audit_log("note restored", r["title"]); IX.sig = None; return True
+
+
+def client_seen(name, tool):
+    with LOCK:
+        DB.execute("insert into clients values(?,?,?,1) on conflict(name) do update set last_at=excluded.last_at,last_tool=excluded.last_tool,calls=calls+1", (str(name)[:60] or "unknown", now(), tool)); DB.commit()
+
+
+def clients():
+    out = []
+    for r in DB.execute("select * from clients order by last_at desc limit 5"):
+        try: mins = int((datetime.now() - datetime.fromisoformat(r["last_at"])).total_seconds() / 60)
+        except Exception: mins = 0
+        out.append(dict(r, mins=mins))
+    return out
+
+
+def export(dest):
+    """Writes everything the twin has learned as plain files: its own notes, every note it can read, the rules and the log."""
+    import shutil
+    os.makedirs(os.path.join(dest, "notes"), exist_ok=True)
+    for f in glob.glob(os.path.join(NOTES, "*.md")): shutil.copy(f, os.path.join(dest, "notes"))
+    with open(os.path.join(dest, "memory.json"), "w") as f: json.dump([{k: e.get(k, "") for k in ("id", "area", "scope", "title", "why", "since", "src")} for e in IX.get().e], f, indent=1)
+    with open(os.path.join(dest, "log.json"), "w") as f: json.dump([dict(r) for r in DB.execute("select at,action,detail from log order by id")], f, indent=1)
+    if os.path.isfile(CFG["rules"]): shutil.copy(CFG["rules"], os.path.join(dest, "twin.rules.json"))
+    return len(glob.glob(os.path.join(dest, "notes", "*.md")))
+
+
+def propose(text, area, source, scope="personal"):
     text = redact(" ".join(str(text).split()))[:500]
     if not text or HARD.search(text + " " + source) or DENY.search(text): return None
     with LOCK:
-        c = DB.execute("insert into proposed(text,area,source,created) values(?,?,?,?)", (text, area if area in AREAS else "decisions", redact(source)[:80], now())); DB.commit()
+        c = DB.execute("insert into proposed(text,area,source,created,scope) values(?,?,?,?,?)", (text, area if area in AREAS else "decisions", redact(source)[:80], now(), scope or "personal")); DB.commit()
     return c.lastrowid
 
 
-def proposals(): return [dict(r) for r in DB.execute("select * from proposed order by id desc limit 40")]
+def proposals(): return [dict(r, conflict=conflict(r["text"], r["area"])) for r in DB.execute("select * from proposed order by id desc limit 40")]
 
 
-def settle(pid, accept):
+def settle(pid, accept, replace=False):
     with LOCK:
         r = DB.execute("select * from proposed where id=?", (pid,)).fetchone()
-        if r and accept: DB.execute("insert into taught(text,area,created) values(?,?,?)", (r["text"], r["area"], now()))
+        if r and accept:
+            old = conflict(r["text"], r["area"]) if replace else None
+            nid = save_note(r["text"], r["area"], r["source"], r["scope"], old["title"] if old else "")
+            if old: replace_note(old, nid, r["text"])
         DB.execute("delete from proposed where id=?", (pid,)); DB.commit()
         if r: audit_log("proposal accepted" if accept else "proposal dropped", "%s | from %s" % (r["text"], r["source"]))
         IX.sig = None
@@ -775,7 +872,8 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/ask": return self.send(ask(d["q"], d.get("mode", "recall")))
             if p == "/api/audit": return self.send(audit())
             if p == "/api/scan": return self.send(scan_repos())
-            if p == "/api/proposal": settle(int(d["id"]), bool(d.get("accept"))); return self.send({"ok": 1})
+            if p == "/api/proposal": settle(int(d["id"]), bool(d.get("accept")), bool(d.get("replace"))); return self.send({"ok": 1})
+            if p == "/api/restore": return self.send({"ok": restore(str(d["id"]))})
             if p == "/api/config": return self.send(config(d))
             if p == "/api/voices": return self.send({"voices": voices()})
             if p == "/api/setup/status": return self.send(build_status())
@@ -787,9 +885,9 @@ class H(BaseHTTPRequestHandler):
                 if p == "/api/teach":
                     if HARD.search(d["text"]): return self.send({"id": ""})
                     area = d["area"] if d.get("area") in AREAS else "decisions"
-                    c = DB.execute("insert into taught(text,area,created) values(?,?,?)", (redact(d["text"].strip())[:500], area, now())); DB.commit()
-                    audit_log("note taught", d["text"]); IX.sig = None
-                    return self.send({"id": "taught:%d" % c.lastrowid})
+                    text = redact(d["text"].strip())[:500]; clash = conflict(text, area); nid = save_note(text, area, "taught in the page")
+                    audit_log("note taught", text); IX.sig = None
+                    return self.send({"id": nid, "conflict": clash})
                 if p == "/api/review":
                     if d["verdict"] in ("true", "outdated"):
                         DB.execute("insert or replace into review values(?,?,?)", (d["id"], d["verdict"], now())); DB.commit(); audit_log("note marked " + d["verdict"], d["id"]); IX.sig = None
@@ -813,6 +911,7 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "brief": print(brief()); sys.exit()
+    if len(sys.argv) > 2 and sys.argv[1] == "export": print("wrote %d notes, memory.json, log.json and the rules to %s" % (export(sys.argv[2]), sys.argv[2])); sys.exit()
     if len(sys.argv) > 1 and sys.argv[1] == "log":
         for r in DB.execute("select at,action,detail from log order by id"): print(r["at"], "|", r["action"], "|", r["detail"])
         sys.exit()

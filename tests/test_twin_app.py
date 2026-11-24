@@ -81,6 +81,31 @@ class TwinApp(unittest.TestCase):
         rows = [r["action"] for r in twin.DB.execute("select action from log")]
         self.assertIn("proposal accepted", rows)
 
+    def test_what_it_learns_is_a_plain_file(self):
+        pid = twin.propose("Invoices go out on the first working day.", "decisions", "a test"); twin.settle(pid, True)
+        files = [f for f in os.listdir(twin.NOTES) if "invoices-go-out" in f]
+        self.assertEqual(len(files), 1)
+        with open(os.path.join(twin.NOTES, files[0])) as f: raw = f.read()
+        self.assertIn("source: a test", raw)
+        self.assertIn("area: decisions", raw)
+
+    def test_a_new_decision_can_replace_an_old_one_and_be_restored(self):
+        twin.settle(twin.propose("Crates are stacked four high on the dock.", "decisions", "a test"), True)
+        pid = twin.propose("Crates are stacked three high on the dock.", "decisions", "a test")
+        clash = [p for p in twin.proposals() if p["id"] == pid][0]["conflict"]
+        self.assertIn("four high", clash["title"])
+        twin.settle(pid, True, True)
+        titles = [e["title"] for e in twin.IX.get().e]
+        self.assertIn("Crates are stacked three high on the dock.", titles)
+        self.assertNotIn("Crates are stacked four high on the dock.", titles)
+        self.assertTrue(twin.restore(clash["id"]))
+        self.assertIn("Crates are stacked four high on the dock.", [e["title"] for e in twin.IX.get().e])
+
+    def test_export_writes_plain_files(self):
+        d = tempfile.mkdtemp(); twin.export(d)
+        self.assertTrue(os.path.isfile(os.path.join(d, "memory.json")))
+        self.assertTrue(os.path.isfile(os.path.join(d, "log.json")))
+
     def test_mcp_server_lists_its_tools(self):
         msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
                 {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "twin_allowed", "arguments": {"action": "send the supplier email"}}}]

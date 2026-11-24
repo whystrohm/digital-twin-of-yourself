@@ -2,7 +2,9 @@
 
 **A digital twin that knows your work.**
 
-A twin of you that runs on your machine. It remembers how you decide, what you like, how you write and what it must never do. You can see it, ask it and correct it, and every coding session you run can ask it first.
+Your approved decisions, voice rules and limits, available to your coding sessions. It runs on your machine. You can see it, ask it and correct it, and nothing becomes part of it until you accept it.
+
+Built for people who already work with coding agents and are tired of correcting the same thing twice.
 
 ![A digital twin that knows your work. Three inputs go in: your photo becomes the head, your repos are read, your notes fill it. Then it answers "what shipped this week?" and stops at "email the supplier" with "That one needs your yes"](assets/twin-cover.webp)
 
@@ -16,10 +18,17 @@ A twin of you that runs on your machine. It remembers how you decide, what you l
 
 | The problem | What the twin does |
 |---|---|
-| AI forgets you. Every session starts cold. | Keeps your decisions, taste, voice and limits as notes with a source and a date. |
+| Your corrections do not carry. You fix it in one session and fix it again in the next tool. | Keeps each decision as a plain file with its source and date. Any session that speaks MCP can ask for it. |
+| Instruction files drift. Nobody knows which rule is current or where it came from. | A new decision can replace an old one. The old one is kept, marked replaced, and can be restored. |
 | AI drafts do not sound like you. | Checks any draft against your rules, by code, and names each line that fails. |
 | Agents act without asking. | Pushing, publishing, sending, spending and deleting come back as "needs your yes". |
 | You run more sessions than you can watch. | Shows what shipped and what is next, and your open sessions if you turn that on. |
+
+## Does it work
+
+One real run of the learning loop, with fresh sessions each time: a session does not know something, you correct it once, the next fresh session uses the note and names its source, you change the decision, and the next session uses the new one only. 6 of 6 steps came out as expected. The full transcript is in [validation/LOOP_RESULTS.md](validation/LOOP_RESULTS.md), and `python3 validation/twin_loop.py` runs it again on your own Claude account.
+
+That is one run on made-up notes. It shows the loop works. It is not a measure of how much time it saves you.
 
 ## Try it in one minute
 
@@ -67,7 +76,7 @@ claude mcp add twin -- python3 /full/path/to/twin/twin_mcp.py
 |---|---|
 | Is this allowed? | Whether the action needs your yes, and the limit behind it |
 | Check this draft | Pass or fail per rule, with the words that failed |
-| What did we decide? | Your own note, word for word, with its source. Or "not enough evidence" |
+| What did we decide? | Your own note, word for word, with its source and scope. Or "not enough evidence" |
 | Audit my work | Read only: not pushed, not committed, off voice, possible keys in tracked files |
 
 ## What leaves your machine
