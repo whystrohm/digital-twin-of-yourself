@@ -85,7 +85,7 @@ Use your own face, voice and notes, or ones you have written consent for. A twin
 
 ## Pairs with Shotkit
 
-[Shotkit](https://github.com/whystrohm/shotkit) plans and checks on-brand video inside Claude Code. The twin holds your taste and your limits. Run both and a video session can ask the twin what you like before it plans a shot, and propose what it learned when you approve or reject one.
+[Shotkit](https://github.com/whystrohm/shotkit) plans and checks on-brand video inside Claude Code. The twin holds your taste and your limits. Connect both to the same Claude Code session and it can ask the twin what you like before it plans a shot, and propose a note when you approve or reject one. Shotkit does not call the twin on its own yet.
 
 ---
 
