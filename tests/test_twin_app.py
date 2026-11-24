@@ -1132,6 +1132,40 @@ assert new['title'] == 'Crates in the second source are green.'
         self.assertEqual(len(json.loads(out[1])["result"]["tools"]), 7)
         self.assertTrue(json.loads(json.loads(out[2])["result"]["content"][0]["text"])["needs_owner_yes"])
 
+    def test_incomplete_upload_never_starts_its_action(self):
+        import io
+        from unittest.mock import Mock, patch
+        for route, action in (("/api/listen", "listen"), ("/api/voice/clone?consent=1", "clone_voice"),
+                              ("/api/setup/check", "check_photo"), ("/api/setup/photo?consent=1", "build_head")):
+            with self.subTest(route=route), patch.object(twin, action) as start:
+                request = Mock(path=route, headers={"Content-Length": "8"}, rfile=io.BytesIO(b"part"))
+                twin.H.do_POST(request)
+                start.assert_not_called()
+                self.assertEqual(request.send.call_args.kwargs.get("code"), 400)
+
+    def test_timed_out_upload_stops_before_dispatch(self):
+        import socket
+        from unittest.mock import Mock, patch
+        request = Mock(path="/api/setup/check", headers={"Content-Length": "8"})
+        request.rfile.read.side_effect = socket.timeout("upload paused")
+        with patch.object(twin, "check_photo") as start:
+            twin.H.do_POST(request)
+            start.assert_not_called()
+        self.assertEqual(request.send.call_args.kwargs.get("code"), 408)
+
+    def test_disconnected_upload_closes_without_reply(self):
+        from unittest.mock import Mock, patch
+        request = Mock(path="/api/setup/check", headers={"Content-Length": "8"})
+        request.rfile.read.side_effect = ConnectionResetError("upload cancelled")
+        with patch.object(twin, "check_photo") as start:
+            twin.H.do_POST(request)
+            start.assert_not_called()
+        request.send.assert_not_called()
+        self.assertIs(request.close_connection, True)
+
+
+
+
 
 class PrivacyDocs(unittest.TestCase):
     def read_doc(self, name):

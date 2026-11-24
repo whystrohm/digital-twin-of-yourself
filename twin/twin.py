@@ -6,6 +6,7 @@ listed in docs/TWIN.md. The server binds to 127.0.0.1.
 """
 import glob, hashlib, json, os, re, secrets, sqlite3, subprocess, sys, tempfile, threading, time
 import contextlib
+import socket
 import stat
 from pathlib import Path
 import urllib.request
@@ -1660,13 +1661,21 @@ class H(BaseHTTPRequestHandler):
         try: n = int(self.headers.get("Content-Length", ""))
         except ValueError: return self.send({"error": "length required"}, code=411)
         if n < 0 or n > 12_000_000: return self.send({"error": "bad length"}, code=413)
-        raw = self.rfile.read(n); p = self.path
+        try:
+            raw = self.rfile.read(n)
+        except socket.timeout:
+            self.close_connection = True
+            return self.send({"error": "request timed out"}, code=408)
+        except ConnectionError:
+            self.close_connection = True
+            return
+        if len(raw) != n: return self.send({"error": "incomplete request"}, code=400)
+        p = self.path
         try:
             if p == "/api/listen": return self.send({"text": listen(raw)})
             if p.startswith("/api/voice/clone?"): return self.send(clone_voice(raw, p))
             if p == "/api/setup/check": return self.send(check_photo(raw))
             if p.split("?", 1)[0] == "/api/setup/photo": return self.send(build_head(raw) if p == "/api/setup/photo?consent=1" else {"status": "Tick the consent box first.", "error": True})
-            if len(raw) != n: raise ValueError("incomplete request")
             d = json.loads(raw or b"{}")
             if not isinstance(d, dict): raise ValueError("expected an object")
             for field in ("q", "text"):
