@@ -226,7 +226,8 @@ def main(argv=None):
         tests = [t for t in tests if t["id"] in want]
     if not tests:
         ap.error("no stress tests selected")
-    # Everything sent to the API is redacted first, the Twin included.
+    # The Twin and the writing samples are redacted before they are sent. The stress-test prompts and the
+    # answers the models write are sent as they are.
     twin_text = tl.redact(tl.read_text(args.twin))
     if args.samples:
         reference = read_samples(args.samples, args.max_sample_chars)

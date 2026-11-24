@@ -6,7 +6,7 @@ import argparse,base64,json,os,sys,time,urllib.request
 import numpy as np, trimesh, cv2
 from PIL import Image
 HERE=os.path.dirname(os.path.abspath(__file__))
-ap=argparse.ArgumentParser(); ap.add_argument('--photo'); ap.add_argument('--glb'); ap.add_argument('--body',action='store_true',help='a full-length photo: keep the whole figure');ap.add_argument('--left-front');ap.add_argument('--right-front');ap.add_argument('--ref',help='the cut-out photo the mesh was built from');ap.add_argument('--check',help='look at a photo and say what to fix; prints JSON');ap.add_argument('--out'); ap.add_argument('--points',type=int,default=270000); a=ap.parse_args()
+ap=argparse.ArgumentParser(); ap.add_argument('--photo'); ap.add_argument('--glb'); ap.add_argument('--consent',action='store_true',help='you confirm this is your own photo, or you have written consent from the person in it');ap.add_argument('--body',action='store_true',help='a full-length photo: keep the whole figure');ap.add_argument('--left-front');ap.add_argument('--right-front');ap.add_argument('--ref',help='the cut-out photo the mesh was built from');ap.add_argument('--check',help='look at a photo and say what to fix; prints JSON');ap.add_argument('--out'); ap.add_argument('--points',type=int,default=270000); a=ap.parse_args()
 YUNET=os.path.join(HERE,'yunet.onnx'); YUNET_URL='https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
 def yunet():
     if not os.path.exists(YUNET): urllib.request.urlretrieve(YUNET_URL,YUNET)   # a small face finder, fetched once
@@ -33,6 +33,7 @@ if a.check:
 if not a.out: ap.error('--out is required')
 os.makedirs(a.out,exist_ok=True)
 def say(s): print(s,flush=True); open(os.path.join(a.out,'status.txt'),'w').write(s)
+if a.photo and not a.consent: sys.exit('Add --consent to confirm this is your own photo, or that you have written consent from the person in it.')
 if a.photo:
     say('Cutting you out of the photo')
     from rembg import remove,new_session

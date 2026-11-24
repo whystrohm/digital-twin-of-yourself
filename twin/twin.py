@@ -880,7 +880,7 @@ def _build_head(raw):
         if os.path.exists(os.path.join(HEAD, f)): os.remove(os.path.join(HEAD, f))
     open(os.path.join(HEAD, "photo"), "wb").write(raw)
     py = CFG.get("builder_python") or sys.executable
-    BUILD["proc"] = subprocess.Popen([py if os.path.exists(py) else sys.executable, os.path.join(HERE, "head", "build.py"), "--photo", os.path.join(HEAD, "photo"), "--out", HEAD],
+    BUILD["proc"] = subprocess.Popen([py if os.path.exists(py) else sys.executable, os.path.join(HERE, "head", "build.py"), "--photo", os.path.join(HEAD, "photo"), "--consent", "--out", HEAD],
                                      stdout=subprocess.DEVNULL, stderr=open(os.path.join(HEAD, "build.log"), "w"))
     return {"status": "Starting"}
 

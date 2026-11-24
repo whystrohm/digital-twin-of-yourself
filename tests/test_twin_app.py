@@ -168,6 +168,38 @@ class TwinApp(unittest.TestCase):
         with open(os.path.join(d, "mine.txt"), "w") as f: f.write("keep")
         with self.assertRaises(SystemExit): twin.export(d)
 
+    def test_an_open_session_loses_a_source_the_owner_removed(self):
+        home = tempfile.mkdtemp(prefix="twin-two-"); notes = tempfile.mkdtemp(); empty = tempfile.mkdtemp()
+        with open(os.path.join(notes, "paint.md"), "w") as f: f.write("---\ndescription: The racking is painted signal orange\narea: taste\n---\n")
+        cfg = os.path.join(home, "config.json")
+        with open(cfg, "w") as f: json.dump({"memory": notes}, f)
+        call = lambda i: json.dumps({"jsonrpc": "2.0", "id": i, "method": "tools/call", "params": {"name": "twin_recall", "arguments": {"question": "what colour is the racking painted"}}}) + "\n"
+        p = subprocess.Popen([sys.executable, os.path.join(ROOT, "twin", "twin_mcp.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=dict(os.environ, TWIN_HOME=home))
+        try:
+            p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}) + "\n" + call(2)); p.stdin.flush()
+            p.stdout.readline(); first = p.stdout.readline()
+            self.assertIn("signal orange", first)
+            with open(cfg) as f: now_cfg = json.load(f)
+            with open(cfg, "w") as f: json.dump(dict(now_cfg, memory=empty), f)        # the owner removes the folder in the page
+            os.utime(cfg, (5, 5))
+            p.stdin.write(call(3)); p.stdin.flush()
+            self.assertNotIn("signal orange", p.stdout.readline())
+        finally:
+            p.stdin.close(); p.wait(timeout=20); p.stdout.close()
+
+    def test_an_older_data_folder_upgrades_without_losing_notes(self):
+        twin.DB.execute("insert into taught(text,area,created) values('Returns are logged the same day.','work','2026-01-02T03:04:05')"); twin.DB.commit(); twin.IX.sig = None
+        self.assertIn("Returns are logged the same day.", [e["title"] for e in twin.IX.get().e])
+        self.assertEqual(twin.DB.execute("select count(*) from taught").fetchone()[0], 0)
+        self.assertEqual(len([f for f in os.listdir(twin.NOTES) if "returns-are-logged" in f]), 1)
+
+    def test_a_retry_after_a_crash_does_not_duplicate(self):
+        pid = twin.propose("Bins are emptied at noon.", "work", "a test"); row = [p for p in twin.proposals() if p["id"] == pid][0]
+        twin.save_note(row["text"], row["area"], row["source"], row["scope"], "", row["uid"])      # the file was written, then the process died
+        self.assertEqual(twin.settle(pid, True, False, row["uid"]), {"ok": 1})
+        self.assertEqual(len([f for f in os.listdir(twin.NOTES) if "bins-are-emptied" in f]), 1)
+        self.assertEqual([p for p in twin.proposals() if p["id"] == pid], [])
+
     def test_mcp_server_lists_its_tools(self):
         msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
                 {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "twin_allowed", "arguments": {"action": "send the supplier email"}}}]

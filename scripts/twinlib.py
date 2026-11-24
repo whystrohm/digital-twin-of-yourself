@@ -338,7 +338,9 @@ def list_text_files(root):
             if name.startswith("."):
                 continue
             if name.lower().endswith(TEXT_EXTENSIONS):
-                found.append(os.path.join(dirpath, name))
+                p = os.path.join(dirpath, name)
+                if os.path.realpath(p).startswith(os.path.realpath(root) + os.sep):   # a link may not lead out of the chosen folder
+                    found.append(p)
     return sorted(found)
 
 

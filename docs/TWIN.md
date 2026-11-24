@@ -127,7 +127,7 @@ Everything the twin keeps is in `~/.twin`: `twin.db` (priorities, notes you taug
 
 ## Rules for using it
 
-- Your own face and voice, or ones you have written consent for. Setup makes you tick a box for each. That is your statement, recorded with the time. The twin cannot verify it. Running `twin/head/build.py` by hand skips the page, so the same rule is on you.
+- Your own face and voice, or ones you have written consent for. Setup makes you tick a box for each. That is your statement, recorded with the time. The twin cannot verify it. Running `twin/head/build.py` by hand needs the `--consent` flag for the same reason.
 - Your own notes. Never a coworker's messages or a client's data.
 - A twin of a person is theirs. Do not use one to monitor or score anyone.
 
