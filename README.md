@@ -1,6 +1,89 @@
 # Digital Twin of Yourself
 
-**See how you actually write. Then check every draft, yours or an AI's, against it.**
+**Stop re-explaining yourself to AI.**
+
+A twin of you that runs on your machine. It remembers how you decide, what you like, how you write and what it must never do. You can see it, ask it and correct it, and every coding session you run can ask it first.
+
+![The twin: a head made of dots with one note open, showing the note, the reason and the date](assets/twin.png)
+
+*The demo twin. Maya is made up: a generated face and made-up notes. Every answer on screen is the tool's real output on that sample.*
+
+## Why
+
+| The problem | What the twin does |
+|---|---|
+| AI forgets you. Every session starts cold. | Keeps your decisions, taste, voice and limits as notes with a source and a date. |
+| AI drafts do not sound like you. | Checks any draft against your rules, by code, and names each line that fails. |
+| Agents act without asking. | Pushing, publishing, sending, spending and deleting come back as "needs your yes". |
+| You run more sessions than you can watch. | Shows what is working, what is waiting on you, what shipped and what is next. |
+
+## Try it in one minute
+
+You need Python 3.9 or newer. Nothing to install. Nothing leaves your machine.
+
+```bash
+git clone https://github.com/whystrohm/digital-twin-of-yourself.git
+cd digital-twin-of-yourself
+python3 twin/twin.py
+```
+
+It opens the demo twin in your browser. Then:
+
+- Hover the head. Every dot belongs to one note.
+- Type `do we ship on a Friday?` and it answers from the notes and shows which one.
+- Type `send the supplier email` and it stops and asks for a yes.
+- Click **Check a draft** and paste something with "I think maybe" in it.
+- Drag the bar at the bottom back in time.
+
+![Left: an answer with the note it came from. Right: a draft that fails the voice check](assets/twin-ask-check.png)
+
+## Make it yours
+
+Click **Setup**. Three steps, each optional.
+
+| Step | What happens | Needs |
+|---|---|---|
+| **Face** | Drop one photo. It checks the photo and says what to fix, then builds a 3D head you can turn all the way round. | A fal key and a few Python packages. One paid build on your own account. |
+| **Voice** | Pick a voice from your ElevenLabs account and the twin speaks its answers. | An ElevenLabs key. |
+| **Notes** | Point it at a folder of Markdown notes and the git repos it may read. | Nothing. A Claude Code memory folder works as it is. |
+
+![Setup: one photo in, the head it becomes, and the photo check result](assets/twin-setup.png)
+
+Full instructions: [docs/TWIN.md](docs/TWIN.md).
+
+## Connect your coding sessions
+
+The twin is also an MCP server. Any tool that speaks MCP can ask it before it guesses, and propose a note when you correct it. A session can only propose. You accept or drop each one in the page.
+
+```bash
+claude mcp add twin -- python3 /full/path/to/twin/twin_mcp.py
+```
+
+| A session asks | The twin answers |
+|---|---|
+| Is this allowed? | Whether the action needs your yes, and the limit behind it |
+| Check this draft | Pass or fail per rule, with the words that failed |
+| What did we decide? | Your own note, word for word, with its source. Or "not enough evidence" |
+| Audit my work | Read only: not pushed, not committed, off voice, possible keys in tracked files |
+
+## What leaves your machine
+
+The default is nothing. The page always shows the current line in its top right corner.
+
+| You turn on | What leaves | Where |
+|---|---|---|
+| Nothing (the default) | Nothing | Nowhere |
+| Answers by Claude | Your question, the notes that match, and the work lists on the page | Claude, through your own CLI |
+| Voice | The text of each reply | ElevenLabs, through your own key |
+| The head build | Your cut-out photo, once | fal, through your own key |
+
+Use your own face, voice and notes, or ones you have written consent for. A twin of a person is theirs. Do not use one to monitor or score anyone.
+
+---
+
+# The voice tools
+
+**See how you actually write. Then check every draft, yours or an AI's, against it.** The twin's voice rules come from these tools. They also work on their own.
 
 ![From a folder of writing to a score, your sentence rhythm, the file that drifts, and a draft checked and fixed](assets/film.gif)
 
@@ -165,6 +248,7 @@ Full checklist: [SAFETY_CHECKLIST.md](SAFETY_CHECKLIST.md).
 ├── CLAUDE_CODE_PROMPT.md ..... Layer 3, with the scripts
 ├── SAFETY_CHECKLIST.md ....... Before you paste, scan, or share
 ├── CHANGELOG.md
+├── twin/ ................... The twin: page, local server, MCP server, head builder
 ├── scripts/ .................. twin_scan, twin_report, twin_check, twin_diff, test.sh
 ├── twins/example/ ............ A synthetic twin: twin.md, twin.rules.json, changelog
 ├── docs/ ..................... Rules format, teams guide, foundrkit-lint export

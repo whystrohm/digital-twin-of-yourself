@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added: the twin (planned as 4.0.0)
+- `twin/twin.py`: a local page and server. A head made of dots where every dot belongs to one note, with its reason, source and date. Ask it, check and rewrite drafts, an ordered priority list, what shipped, a read-only audit, a timeline, and "teach it". Standard library only. Listens on `127.0.0.1` only.
+- `twin/twin_mcp.py`: the twin as an MCP server. Seven tools so a coding session can recall a decision, check a draft, ask whether an action needs a yes, and propose a note. A proposal does nothing until it is accepted in the page.
+- Setup in the page: a photo check that runs before any paid step, a 3D head built from one photo (`twin/head/build.py`, needs a fal key and extra packages), a voice picked from an ElevenLabs account, a notes folder and a list of repos.
+- A demo twin that runs with no setup: a generated face and made-up notes in `examples/twin-notes/`.
+- `docs/TWIN.md`: how to run it, connect it, what leaves the machine for each setting, and its limits today.
+- `tests/test_twin_app.py`: ten offline tests on the sample.
+
+### Changed
+- README opens with the twin. The measuring and checking tools from 3.0 follow under "The voice tools" and work as before.
+
 ### Changed
 - README shows `assets/report.png`, a designed still of the report in the same style as the film and the diagram, drawn from the sample's real `patterns.json` by `tools/demo/still.py`. It replaces the screenshot of the report page.
 
