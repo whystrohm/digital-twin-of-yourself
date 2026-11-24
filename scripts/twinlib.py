@@ -4,12 +4,14 @@ Standard library only. No network access. Every function here is
 deterministic: the same input gives the same output, byte for byte.
 """
 
+import contextlib
 import hashlib
 import json
 import os
 import re
 import stat
 import statistics
+import sys
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 TEXT_EXTENSIONS = (".md", ".txt")
@@ -327,9 +329,49 @@ def sentence_has_any(text, compiled):
 # ---------------------------------------------------------------- files
 
 
-def list_text_files(root):
+@contextlib.contextmanager
+def _sample_directory(path):
+    """Open every directory from the filesystem root without following links."""
+    if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
+        raise OSError("Bounded sample reads are unavailable on this platform.")
+    parts = [p for p in os.path.abspath(path).split(os.sep) if p]
+    if sys.platform == "darwin" and parts and parts[0] in ("tmp", "var"):
+        alias = os.sep + parts[0]
+        if os.path.islink(alias) and os.path.realpath(alias) == "/private" + alias:
+            parts.insert(0, "private")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(os.sep, flags)
+    try:
+        for part in parts:
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def list_text_files(root, bounded=False):
     """All .md/.txt files under root, sorted, skipping hidden folders."""
     root = os.path.abspath(root)
+    if bounded:
+        found = []
+        try:
+            with _sample_directory(root) as parent:
+                for rel, dirs, files, directory in os.fwalk(".", dir_fd=parent, follow_symlinks=False):
+                    dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+                    for name in files:
+                        if name.startswith(".") or not name.lower().endswith(TEXT_EXTENSIONS):
+                            continue
+                        try:
+                            mode = os.stat(name, dir_fd=directory, follow_symlinks=False).st_mode
+                        except OSError:
+                            continue
+                        if stat.S_ISREG(mode):
+                            found.append(os.path.normpath(os.path.join(root, rel, name)))
+        except OSError:
+            return []
+        return sorted(found)
     if os.path.isfile(root):
         return [root]
     found = []
@@ -355,19 +397,11 @@ def read_text(path, root=None):
         with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
             return fh.read().replace("\r\n", "\n").replace("\r", "\n")
     root, path = os.path.abspath(root), os.path.abspath(path)
-    if os.path.commonpath((root, path)) != root or path == root or os.path.islink(root):
+    if os.path.commonpath((root, path)) != root or path == root:
         raise ValueError("The sample must be a regular file beneath the selected folder.")
-    if os.open not in os.supports_dir_fd or not hasattr(os, "O_NOFOLLOW"):
-        raise OSError("Bounded sample reads are unavailable on this platform.")
-    flags = os.O_RDONLY | os.O_NOFOLLOW
-    directory = os.open(root, flags | os.O_DIRECTORY)
-    try:
-        parts = os.path.relpath(path, root).split(os.sep)
-        for part in parts[:-1]:
-            child = os.open(part, flags | os.O_DIRECTORY, dir_fd=directory)
-            os.close(directory)
-            directory = child
-        fd = os.open(parts[-1], flags | getattr(os, "O_NONBLOCK", 0), dir_fd=directory)
+    with _sample_directory(os.path.dirname(path)) as directory:
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        fd = os.open(os.path.basename(path), flags, dir_fd=directory)
         try:
             if not stat.S_ISREG(os.fstat(fd).st_mode):
                 raise ValueError("The sample is not a regular file.")
@@ -377,8 +411,6 @@ def read_text(path, root=None):
         finally:
             if fd is not None:
                 os.close(fd)
-    finally:
-        os.close(directory)
 
 
 def sha256_file(path):

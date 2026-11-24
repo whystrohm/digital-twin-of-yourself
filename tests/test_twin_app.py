@@ -185,6 +185,29 @@ class ValidationSafetyTests(unittest.TestCase):
         with open(os.path.join(ROOT, "validation", "EVAL.md")) as f: text = f.read()
         self.assertNotIn("reply always parses", text)
 
+    def test_evaluator_refuses_linked_ancestors_before_discovering_samples(self):
+        from pathlib import Path
+        from unittest import mock
+        module, _ = self.load_validation("twin_eval")
+        with tempfile.TemporaryDirectory(dir="/tmp") as folder:
+            root = Path(folder)
+            selected = root / "original" / "samples"
+            selected.mkdir(parents=True)
+            sample = selected / "nested" / "story.md"
+            sample.parent.mkdir()
+            sample.write_text("Ordinary reference writing.", encoding="utf-8")
+            self.assertIn("Ordinary reference writing.", module.read_samples(selected, 100))
+            (root / "alias").symlink_to(selected.parent, target_is_directory=True)
+            linked = root / "alias" / "samples"
+            with self.subTest(action="read"):
+                with self.assertRaises((OSError, ValueError)):
+                    module.tl.read_text(linked / "nested" / "story.md", root=linked)
+            with self.subTest(action="discover"):
+                with mock.patch.object(os, "scandir", wraps=os.scandir) as visits:
+                    self.assertEqual(module.read_samples(linked, 100), "")
+                    visits.assert_not_called()
+
+
 
 _fixtures = tempfile.TemporaryDirectory(prefix="twin-test-")
 _previous_store = os.environ.get("TWIN_HOME")
@@ -1306,6 +1329,65 @@ class McpCheckResultTests(unittest.TestCase):
                 with contextlib.closing(sqlite3.connect(os.path.join(store, "twin.db"))) as db:
                     recorded = db.execute("select last_result from clients").fetchone()[0]
                 self.assertEqual((result.get("isError", False), recorded), (expected == "error", expected))
+
+
+class JudgeSchemaTests(unittest.TestCase):
+    def test_invalid_rules_and_unknown_test_ids_fail_before_any_provider_call(self):
+        import contextlib, io
+        from pathlib import Path
+        from unittest import mock
+        module, _ = ValidationSafetyTests.load_validation("twin_eval")
+        with tempfile.TemporaryDirectory() as folder:
+            profile = Path(folder, "profile.md"); profile.write_text("Use short sentences.")
+            invalid = Path(folder, "rules.json"); invalid.write_text("{}")
+            destination = Path(folder, "result.json")
+            cases = [(["--tests", "ST-01,ST-missing"], "ST-missing"),
+                     (["--rules", str(invalid)], "not a valid"),
+                     (["--rules", str(Path(folder, "missing.json"))], "cannot read")]
+            for options, problem in cases:
+                with self.subTest(options=options):
+                    errors = io.StringIO()
+                    with mock.patch.object(module, "call", side_effect=AssertionError("unexpected model call")) as call:
+                        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "offline-fixture"}):
+                            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(errors):
+                                with self.assertRaises(SystemExit) as stopped:
+                                    module.main(["--twin", str(profile), "--out", str(destination)] + options)
+                    call.assert_not_called()
+                    self.assertEqual(stopped.exception.code, 2)
+                    self.assertIn(problem, errors.getvalue())
+                    self.assertFalse(destination.exists())
+
+    def test_a_valid_selected_rule_set_checks_both_completed_answers(self):
+        import contextlib, io
+        from pathlib import Path
+        from unittest import mock
+        module, _ = ValidationSafetyTests.load_validation("twin_eval")
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder, "result.json")
+            example = Path(ROOT, "twins", "example")
+            replies = [("Done.", {}, "end_turn"), ("Done.", {}, "end_turn"),
+                       ('{"winner":"tie","confidence":3,"reason":"Same text."}', {}, "end_turn")]
+            with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "offline-fixture"}), mock.patch.object(module, "call", side_effect=replies):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = module.main(["--twin", str(example / "twin.md"), "--rules", str(example / "twin.rules.json"),
+                                        "--tests", "ST-01", "--out", str(output)])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output.read_text())["summary"]["rule_pass"], {"generic": 1, "twin": 1})
+
+    def test_incomplete_or_invalid_judge_fields_cannot_score_a_win(self):
+        fixture = ValidationSafetyTests()
+        good = {"winner": "A", "confidence": 3, "reason": "Shorter."}
+        cases = [(dict(good), True), ({"winner": "A"}, False), (dict(good, reason=7), False),
+                 (dict(good, confidence=True), False), (dict(good, confidence=6), False),
+                 (dict(good, other="unexpected"), False)]
+        for verdict, valid in cases:
+            with self.subTest(verdict=verdict):
+                answers = ["One complete answer.", "Another complete answer.", json.dumps(verdict)]
+                code, result = fixture.evaluator_with_transport([fixture.evaluator_message(a) for a in answers])
+                self.assertEqual(code, 0 if valid else 1)
+                self.assertEqual(result["complete"], valid)
+                summary = result["summary"]
+                self.assertEqual(summary["twin_wins"] + summary["generic_wins"], int(valid))
 
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import twin_check  # noqa: E402
 import twinlib as tl  # noqa: E402
 
 API_URL = "https://api.anthropic.com/v1/messages"
@@ -103,7 +104,7 @@ def parse_stress_tests(path):
 def read_samples(folder, limit):
     parts = []
     used = 0
-    for f in tl.list_text_files(folder):
+    for f in tl.list_text_files(folder, bounded=True):
         room = limit - used
         if room <= 0:
             break
@@ -193,15 +194,12 @@ def sign_test(wins, losses):
     return round(min(1.0, 2 * tail), 4)
 
 
-def rule_check(rules_path, text):
-    import twin_check  # noqa: E402
-    doc = twin_check.load_rules(rules_path)
-    lex = tl.load_lexicon()
+def rule_check(rules, lexicon, text):
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as fh:
         fh.write(text)
         path = fh.name
     try:
-        results = twin_check.check_file(path, "response", doc["rules"], lex)
+        results = twin_check.check_file(path, "response", rules, lexicon)
     finally:
         os.unlink(path)
     failed = [r["rule"]["id"] for r in results if r["hits"] and r["rule"]["severity"] == "error"]
@@ -229,9 +227,18 @@ def main(argv=None):
     tests = parse_stress_tests(os.path.join(HERE, "STRESS_TESTS.md"))
     if args.tests:
         want = {t.strip() for t in args.tests.split(",")}
+        unknown = want.difference(t["id"] for t in tests)
+        if unknown:
+            ap.error("unknown test ids: " + ", ".join(sorted(unknown)))
         tests = [t for t in tests if t["id"] in want]
     if not tests:
         ap.error("no stress tests selected")
+    if args.rules:
+        try:
+            rules = twin_check.load_rules(args.rules)["rules"]
+            lexicon = tl.load_lexicon()
+        except (twin_check.RulesError, OSError, ValueError) as exc:
+            ap.error(str(exc))
     # The Twin and the writing samples are redacted before they are sent. The stress-test prompts and the
     # answers the models write are sent as they are.
     twin_text = tl.redact(tl.read_text(args.twin))
@@ -302,22 +309,25 @@ def main(argv=None):
                 continue
             try:
                 v = json.loads(text)
+                if not isinstance(v, dict) or set(v) != set(JUDGE_SCHEMA["required"]):
+                    raise ValueError("Missing or unexpected judge fields")
                 pick = v["winner"]
-                if pick not in ("A", "B", "tie"):
-                    raise ValueError(pick)
+                if (pick not in JUDGE_SCHEMA["properties"]["winner"]["enum"] or not isinstance(v["reason"], str) or
+                        type(v["confidence"]) is not int or v["confidence"] not in JUDGE_SCHEMA["properties"]["confidence"]["enum"]):
+                    raise ValueError("Invalid judge fields")
             except (ValueError, KeyError, TypeError):
                 verdicts.append({"twin_was": "A" if twin_first else "B", "pick": "error",
                                  "stop": s, "raw": text[:500]})
                 continue
             mapped = "tie" if pick == "tie" else ("twin" if (pick == "A") == twin_first else "generic")
             verdicts.append({"twin_was": "A" if twin_first else "B", "judge_said": pick, "pick": mapped,
-                             "confidence": v.get("confidence"), "reason": v.get("reason", "")})
+                             "confidence": v["confidence"], "reason": v["reason"]})
         row["verdicts"] = verdicts
         picks = [v["pick"] for v in verdicts if v["pick"] != "error"]
         row["result"] = ((picks[0] if len(set(picks)) == 1 else "split")
                          if len(picks) == len(orders) else "error")
         if args.rules:
-            row["rules"] = {"generic": rule_check(args.rules, generic), "twin": rule_check(args.rules, twin)}
+            row["rules"] = {"generic": rule_check(rules, lexicon, generic), "twin": rule_check(rules, lexicon, twin)}
         rows.append(row)
         save(False)
         print("%s  %-8s %s" % (t["id"], row["result"], t["title"]))
