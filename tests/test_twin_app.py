@@ -2,7 +2,23 @@
 import json, os, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-os.environ["TWIN_HOME"] = tempfile.mkdtemp(prefix="twin-test-")
+_fixtures = tempfile.TemporaryDirectory(prefix="twin-test-")
+_previous_store = os.environ.get("TWIN_HOME")
+os.environ["TWIN_HOME"] = os.path.join(_fixtures.name, "data")
+
+
+def test_folder():
+    return tempfile.mkdtemp(dir=_fixtures.name)
+
+
+def tearDownModule():
+    twin.DB.close()
+    if _previous_store is None:
+        os.environ.pop("TWIN_HOME", None)
+    else:
+        os.environ["TWIN_HOME"] = _previous_store
+    _fixtures.cleanup()
+
 sys.path.insert(0, os.path.join(ROOT, "twin"))
 _argv, sys.argv = sys.argv, sys.argv[:1]
 import twin  # noqa: E402
@@ -37,6 +53,48 @@ class TwinApp(unittest.TestCase):
         self.assertEqual(len(twin.IX.get().e), before)          # proposed is not memory
         twin.settle(pid, True)
         self.assertEqual(len(twin.IX.get().e), before + 1)       # accepted is
+
+    def test_setup_copy_describes_the_saved_sources_and_network_actions(self):
+        from pathlib import Path
+        from unittest.mock import patch
+        with patch.dict(twin.CFG, read_sessions=True):
+            inventory = twin.will_read().lower()
+        self.assertIn("transcript", inventory)
+        self.assertIn("last prompt", inventory)
+        self.assertNotIn("nothing else", inventory)
+        ui = Path(ROOT, "twin", "ui.html").read_text()
+        for phrase in ("display name", "voice profile", "temporary copy", "account voices", "transcript", "last prompt"):
+            with self.subTest(phrase=phrase): self.assertIn(phrase, ui.lower())
+        self.assertNotIn("Nothing is uploaded unless a step says so", ui)
+
+    def test_page_reloads_edited_entries_with_the_same_count(self):
+        from pathlib import Path
+        import shutil
+        if not shutil.which("node"): self.skipTest("Node is needed for this page check")
+        ui = Path(ROOT, "twin", "ui.html").read_text()
+        refresh = ui[ui.index("async function refresh(full)"):ui.index("function fitName()")]
+        shell = """
+let S,E=[],idx={},stF=[],hot,pin,N=0,version=0;
+const draw=()=>{},tl=()=>{};
+const api=async()=>({ok:true,json:async()=>({terminals:[],entries:[
+  {id:'one',title:version?'New decision':'Old decision',since:'2026-01-01'}]})});
+"""
+        verify = """
+(async()=>{await refresh(); version++; await refresh();
+  if(E[0].title!=='New decision') throw new Error('stale page entry')})()
+"""
+        proc = subprocess.run(["node", "-e", shell + refresh + verify], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_offline_suite_removes_its_test_folders(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder:
+            env = dict(os.environ, TMPDIR=folder, PYTHONDONTWRITEBYTECODE="1")
+            proc = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-p",
+                                   "test_twin_app.py", "-k", "test_an_open_session_loses"],
+                                  cwd=ROOT, env=env, capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(list(Path(folder).iterdir()), [])
 
     def test_redaction(self):
         r = twin.redact("mail sam@example.com or call 617-555-0100, it cost $1,200")
@@ -112,7 +170,7 @@ class TwinApp(unittest.TestCase):
         self.assertEqual(twin.terminals(), ([], 0))
 
     def test_a_symlink_cannot_lead_out_of_the_notes_folder(self):
-        d = tempfile.mkdtemp(); out = tempfile.mkdtemp(); secret = os.path.join(out, "secret.md")
+        d = test_folder(); out = test_folder(); secret = os.path.join(out, "secret.md")
         with open(secret, "w") as f: f.write("---\ndescription: The vault code is nine nine nine\narea: limits\n---\n")
         os.symlink(secret, os.path.join(d, "linked.md"))
         with open(os.path.join(d, "real.md"), "w") as f: f.write("---\ndescription: A real note about packing\narea: work\n---\n")
@@ -151,7 +209,7 @@ class TwinApp(unittest.TestCase):
         self.assertNotIn("Crates are stacked three high on the dock.", after)       # only one of the two stays active
 
     def test_export_writes_plain_files(self):
-        d = tempfile.mkdtemp(); twin.export(d)
+        d = test_folder(); twin.export(d)
         self.assertTrue(os.path.isfile(os.path.join(d, "memory.json")))
         self.assertTrue(os.path.isfile(os.path.join(d, "log.json")))
 
@@ -179,7 +237,7 @@ class TwinApp(unittest.TestCase):
         self.assertIn(nid, [e["id"] for e in twin.IX.get().e])
 
     def test_a_link_in_the_twins_own_notes_is_ignored(self):
-        out = tempfile.mkdtemp(); secret = os.path.join(out, "s.md")
+        out = test_folder(); secret = os.path.join(out, "s.md")
         with open(secret, "w") as f: f.write("---\ndescription: The safe is behind the boiler\narea: limits\n---\n\nx\n")
         os.symlink(secret, os.path.join(twin.NOTES, "linked.md")); twin.IX.sig = None
         try: self.assertFalse(any("boiler" in e["title"] for e in twin.IX.get().e))
@@ -187,7 +245,7 @@ class TwinApp(unittest.TestCase):
 
     def test_removing_a_source_removes_its_notes_in_a_running_process(self):
         self.assertTrue(twin.IX.search("do we ship on a friday")[1])
-        keep = dict(twin.CFG); empty = tempfile.mkdtemp()
+        keep = dict(twin.CFG); empty = test_folder()
         try:
             with open(twin.CFG_PATH, "w") as f: json.dump(dict(keep, memory=empty), f)
             os.utime(twin.CFG_PATH, (1, 1))                     # another process saved new settings
@@ -211,12 +269,12 @@ class TwinApp(unittest.TestCase):
         self.assertEqual(twin.shipped(), [])
 
     def test_export_needs_an_empty_folder(self):
-        d = tempfile.mkdtemp()
+        d = test_folder()
         with open(os.path.join(d, "mine.txt"), "w") as f: f.write("keep")
         with self.assertRaises(SystemExit): twin.export(d)
 
     def test_an_open_session_loses_a_source_the_owner_removed(self):
-        home = tempfile.mkdtemp(prefix="twin-two-"); notes = tempfile.mkdtemp(); empty = tempfile.mkdtemp()
+        home = test_folder(); notes = test_folder(); empty = test_folder()
         with open(os.path.join(notes, "paint.md"), "w") as f: f.write("---\ndescription: The racking is painted signal orange\narea: taste\n---\n")
         cfg = os.path.join(home, "config.json")
         with open(cfg, "w") as f: json.dump({"memory": notes}, f)

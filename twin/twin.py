@@ -813,7 +813,11 @@ RULE_RX = re.compile(r"\b(never|always|must|do not|don't|only|ask before|without
 
 def will_read():
     n = len(glob.glob(os.path.join(CFG["memory"], "*.md"))); rs = [os.path.basename(r) for r in CFG["repos"] if os.path.isdir(os.path.join(HOME, r))]
-    return "It reads %d note files in that folder%s%s. Nothing else." % (n, (", and the git history and instruction files of: " + ", ".join(rs)) if rs else ". No repos are listed", ". It also reads Claude Code session titles in ~/.claude" if CFG.get("read_sessions", True) else "")
+    sources = "Saved sources: %d Markdown files, plus learned notes, voice rules and the profile." % n
+    if rs: sources += " Listed repos: " + ", ".join(rs) + ". Git history, instructions and tracked text may be read."
+    if CFG.get("read_sessions", False):
+        sources += " The session list reads records and transcript tails, including the last prompt, folder, status and timing."
+    return sources
 
 
 def scan_repos():
